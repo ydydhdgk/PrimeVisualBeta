@@ -16,6 +16,25 @@ archivesBaseName = 'visuals-1.16.5'
 java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 tasks.withType(JavaCompile) { options.encoding = 'UTF-8' }
 
+sourceSets {
+    main {
+        java {
+            srcDirs = ['.']
+            include '*.java'
+        }
+        resources {
+            srcDirs = []
+        }
+    }
+}
+
+processResources {
+    from('mods.toml') { into 'META-INF' }
+    from('pack.mcmeta')
+    from('en_us.json') { into 'assets/visuals/lang' }
+    from('ru_ru.json') { into 'assets/visuals/lang' }
+}
+
 minecraft {
     mappings channel: 'official', version: '1.16.5'
     runs {
@@ -29,3 +48,5 @@ minecraft {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.16.5-36.2.39'
 }
+
+jar.finalizedBy('reobfJar')
