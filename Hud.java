@@ -12,9 +12,12 @@ import net.minecraft.client.renderer.texture.PotionSpriteUploader;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.inventory.EquipmentSlotType;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.potion.Effect;
 import net.minecraft.potion.EffectInstance;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.MathHelper;
 
 import java.time.LocalTime;
@@ -35,6 +38,15 @@ public class Hud {
     static final int RED    = 0xFFFF5566;
     private static final int IW = 150;
 
+    static long hitTime = 0L;
+    private static String toastText = "";
+    private static int toastColor = 0xFFFFFFFF;
+    private static long toastTime = 0L;
+    private static long lastWarn = 0L;
+    private static final int[] HIST = new int[40];
+    private static int sampleFrames = 0;
+    private static long lastSample = System.currentTimeMillis();
+
     private static int frames, fps;
     private static long lastFpsTime = System.currentTimeMillis();
     private static float speedSmooth;
@@ -42,6 +54,7 @@ public class Hud {
     private static final Map<Effect, Integer> MAX_DURATION = new HashMap<>();
     private static final String[] ROMAN = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final Item[] TRACKED = {Items.TOTEM_OF_UNDYING, Items.GOLDEN_APPLE, Items.ENDER_PEARL, Items.ARROW};
 
     private static class Row {
         final String label, value; final int color;
@@ -53,6 +66,16 @@ public class Hud {
         return (a << 24) | 0x101018;
     }
 
+    static int crosshairColor(int idx) {
+        switch (idx) {
+            case 1: return Config.c1();
+            case 2: return GREEN;
+            case 3: return YELLOW;
+            case 4: return 0xFFFF7AD9;
+            default: return WHITE;
+        }
+    }
+
     public static void render(MatrixStack ms, int sw, int sh) {
         Minecraft mc = Minecraft.getInstance();
         ClientPlayerEntity p = mc.player;
@@ -61,8 +84,9 @@ public class Hud {
         countFps();
         boolean noScreen = mc.screen == null;
 
-        if (noScreen && Config.ON[Config.CROSSHAIR] && mc.options.getCameraType().isFirstPerson()) {
-            crosshair(ms, mc, p, sw, sh);
+        if (noScreen && mc.options.getCameraType().isFirstPerson()) {
+            if (Config.ON[Config.CROSSHAIR]) crosshair(ms, mc, p, sw, sh);
+            if (Config.ON[Config.HITMARKER]) hitMarker(ms, sw / 2, sh / 2);
         }
         if (mc.options.renderDebug) return;
 
@@ -71,13 +95,23 @@ public class Hud {
         RenderSystem.pushMatrix();
         RenderSystem.scalef(s, s, 1f);
         try {
+            if (Config.ON[Config.WARN]) warnings(p);
+            int ix = Config.infoRight ? w - IW - 6 : 6;
             int y = 6;
-            y = infoPanel(ms, mc, p, 6, y);
-            if (Config.ON[Config.EFFECTS]) effects(ms, mc, p, 6, y);
+            y = infoPanel(ms, mc, p, ix, y);
+            if (Config.ON[Config.FPSGRAPH]) y = fpsGraph(ms, mc, ix, y);
+            if (Config.ON[Config.EFFECTS]) effects(ms, mc, p, ix, y);
             if (Config.ON[Config.DURABILITY]) durability(ms, mc, p, w, h);
+            if (Config.ON[Config.ITEMS]) itemCounter(ms, mc, p, w, h);
             if (Config.ON[Config.KEYS]) keystrokes(ms, mc, h);
-            if (noScreen && Config.ON[Config.TARGET]) target(ms, mc, w);
+            int topY = 6;
+            if (Config.ON[Config.COMPASS]) {
+                compass(ms, mc, p, w);
+                topY = 6 + 24;
+            }
+            if (noScreen && Config.ON[Config.TARGET]) target(ms, mc, w, topY);
             if (Config.ON[Config.WATERMARK]) watermark(ms, mc, w);
+            drawToast(ms, mc, w, h);
         } finally {
             RenderSystem.popMatrix();
         }
@@ -88,20 +122,15 @@ public class Hud {
         }
     }
 
-    // ================= Ватермарка (сверху справа) =================
+    // ================= Ватермарка =================
     private static void watermark(MatrixStack ms, Minecraft mc, int w) {
         FontRenderer f = mc.font;
         String name = "PrimeVisual";
         String rest = "  |  " + fps + " fps  |  " + LocalTime.now().format(TIME_FMT);
         int tw = f.width(name) + f.width(rest);
         int pw = tw + 18, ph = 17;
-        int x = w - pw - 6, y = 6;
-        shadow(ms, x, y, pw, ph, 5);
-        rr(ms, x, y, pw, ph, 5, panelColor());
-        for (int i = 6; i < pw - 6; i += 2) { // тонкая градиентная линия снизу
-            AbstractGui.fill(ms, x + i, y + ph - 1, Math.min(x + i + 2, x + pw - 6), y + ph,
-                    lerp(Config.c1(), Config.c2(), i / (float) pw));
-        }
+        int x = Config.infoRight ? 6 : w - pw - 6, y = 6;
+        surface(ms, x, y, pw, ph, Config.radius, panelColor(), true);
         int nx = gradText(ms, f, name, x + 9, y + 5);
         f.drawShadow(ms, rest, (float) nx, (float) (y + 5), LABEL);
     }
@@ -141,6 +170,18 @@ public class Hud {
         if (Config.ON[Config.LIGHT] && mc.level != null) {
             int light = mc.level.getMaxLocalRawBrightness(p.blockPosition());
             rows.add(new Row("Свет", String.valueOf(light), light < 8 ? RED : light < 12 ? YELLOW : GREEN));
+        }
+        if (Config.ON[Config.BIOME] && mc.level != null) {
+            ResourceLocation rl = mc.level.getBiome(p.blockPosition()).getRegistryName();
+            String b = rl == null ? "?" : rl.getPath().replace('_', ' ');
+            if (!b.isEmpty()) b = Character.toUpperCase(b.charAt(0)) + b.substring(1);
+            rows.add(new Row("Биом", b, WHITE));
+        }
+        if (Config.ON[Config.GAMETIME] && mc.level != null) {
+            long t = mc.level.getDayTime() % 24000L;
+            int hours = (int) ((t / 1000L + 6L) % 24L);
+            int minutes = (int) ((t % 1000L) * 60L / 1000L);
+            rows.add(new Row("Мир. время", String.format(Locale.ROOT, "%02d:%02d", hours, minutes), WHITE));
         }
         if (Config.ON[Config.TIME]) {
             rows.add(new Row("Время", LocalTime.now().format(TIME_FMT), WHITE));
@@ -235,6 +276,30 @@ public class Hud {
         }
     }
 
+    // ================= Счётчик предметов (справа по центру) =================
+    private static void itemCounter(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int w, int h) {
+        int[] counts = new int[TRACKED.length];
+        for (int i = 0; i < p.inventory.getContainerSize(); i++) {
+            ItemStack st = p.inventory.getItem(i);
+            for (int k = 0; k < TRACKED.length; k++) {
+                if (st.getItem() == TRACKED[k]) counts[k] += st.getCount();
+            }
+        }
+        int n = 0;
+        for (int c : counts) if (c > 0) n++;
+        if (n == 0) return;
+        int pw = 48, ph = 22, gap = 3;
+        int x = w - pw - 6;
+        int y = h / 2 - (n * (ph + gap) - gap) / 2;
+        for (int k = 0; k < TRACKED.length; k++) {
+            if (counts[k] <= 0) continue;
+            panel(ms, x, y, pw, ph);
+            mc.getItemRenderer().renderGuiItem(new ItemStack(TRACKED[k]), x + 6, y + 3);
+            text(ms, mc.font, "x" + counts[k], x + 26, y + 7, WHITE);
+            y += ph + gap;
+        }
+    }
+
     // ================= Клавиши + CPS =================
     private static void keystrokes(MatrixStack ms, Minecraft mc, int sh) {
         GameSettings o = mc.options;
@@ -257,9 +322,14 @@ public class Hud {
                             int x, int y, int w, int h, boolean down) {
         KEY_ANIM[id] += ((down ? 1f : 0f) - KEY_ANIM[id]) * 0.35f;
         float a = KEY_ANIM[id];
-        shadow(ms, x, y, w, h, 4);
         int pressed = (lerp(Config.c1(), Config.c2(), 0.4f) & 0x00FFFFFF) | 0xE0000000;
-        rr(ms, x, y, w, h, 4, lerp(panelColor(), pressed, a));
+        if (Config.glass) {
+            surface(ms, x, y, w, h, Config.radius, panelColor(), false);
+            if (a > 0.02f) rr(ms, x, y, w, h, Config.radius, (pressed & 0x00FFFFFF) | ((int) (0x99 * a) << 24));
+        } else {
+            shadow(ms, x, y, w, h, Config.radius);
+            rr(ms, x, y, w, h, Config.radius, lerp(panelColor(), pressed, a));
+        }
         int textColor = lerp(0xFFD8D9EA, 0xFFFFFFFF, a);
         int tw = mc.font.width(label);
         if (sub == null) {
@@ -270,12 +340,12 @@ public class Hud {
         }
     }
 
-    // ================= Инфо о цели (сверху по центру) =================
-    private static void target(MatrixStack ms, Minecraft mc, int w) {
+    // ================= Инфо о цели =================
+    private static void target(MatrixStack ms, Minecraft mc, int w, int topY) {
         if (!(mc.crosshairPickEntity instanceof LivingEntity)) return;
         LivingEntity le = (LivingEntity) mc.crosshairPickEntity;
         int tw = 150, th = 27;
-        int x = (w - tw) / 2, y = 6;
+        int x = (w - tw) / 2, y = topY;
         float hp = le.getHealth(), max = Math.max(1f, le.getMaxHealth());
         float frac = MathHelper.clamp(hp / max, 0f, 1f);
         panel(ms, x, y, tw, th);
@@ -287,13 +357,13 @@ public class Hud {
         rr(ms, bx, y + 17, Math.max(3, (int) (bw * frac)), 5, 2, color);
     }
 
-    // ================= Прицел =================
+    // ================= Прицел и хит-маркер =================
     private static void crosshair(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int w, int h) {
         int cx = w / 2, cy = h / 2;
         float charge = p.getAttackStrengthScale(0f);
         int gap = 3 + Math.round((1f - charge) * 4f);
-        int c = mc.crosshairPickEntity != null ? RED : WHITE;
-        crosshairShape(ms, cx, cy, gap, Config.crosshairStyle, c);
+        int c = mc.crosshairPickEntity != null ? RED : crosshairColor(Config.crosshairColor);
+        crosshairShape(ms, cx, cy, gap, Config.crosshairSize, Config.crosshairStyle, c);
         if (charge < 1f) {
             int bw = 22, bx = cx - bw / 2, by = cy + 16;
             rr(ms, bx - 1, by - 1, bw + 2, 4, 1, 0x90000000);
@@ -301,9 +371,21 @@ public class Hud {
         }
     }
 
+    private static void hitMarker(MatrixStack ms, int cx, int cy) {
+        long dt = System.currentTimeMillis() - hitTime;
+        if (dt < 0 || dt > 250) return;
+        int a = (int) (255 * (1f - dt / 250f));
+        int col = (a << 24) | 0xFFFFFF;
+        for (int i = 3; i <= 8; i++) {
+            AbstractGui.fill(ms, cx + i, cy + i, cx + i + 1, cy + i + 1, col);
+            AbstractGui.fill(ms, cx - i, cy - i, cx - i + 1, cy - i + 1, col);
+            AbstractGui.fill(ms, cx + i, cy - i, cx + i + 1, cy - i + 1, col);
+            AbstractGui.fill(ms, cx - i, cy + i, cx - i + 1, cy + i + 1, col);
+        }
+    }
+
     /** Рисует прицел выбранного стиля (используется и в меню для предпросмотра). */
-    static void crosshairShape(MatrixStack ms, int cx, int cy, int gap, int style, int c) {
-        int len = 5;
+    static void crosshairShape(MatrixStack ms, int cx, int cy, int gap, int len, int style, int c) {
         if (style == 0 || style == 3) {
             tick(ms, cx - gap - len, cy, cx - gap, cy + 1, c);
             tick(ms, cx + gap + 1, cy, cx + gap + len + 1, cy + 1, c);
@@ -313,7 +395,7 @@ public class Hud {
         } else if (style == 1) {
             tick(ms, cx - 1, cy - 1, cx + 2, cy + 2, c);
         } else {
-            int r = gap + 3;
+            int r = gap + 1 + len / 2;
             for (int a = 0; a < 360; a += 15) {
                 int px = cx + (int) Math.round(Math.cos(Math.toRadians(a)) * r);
                 int py = cy + (int) Math.round(Math.sin(Math.toRadians(a)) * r);
@@ -328,6 +410,194 @@ public class Hud {
         AbstractGui.fill(ms, x1, y1, x2, y2, c);
     }
 
+
+    // ================= Компас =================
+    private static void compass(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int w) {
+        int cw = 170, ch = 18;
+        int x = (w - cw) / 2, y = 6;
+        panel(ms, x, y, cw, ch);
+        float yaw = MathHelper.wrapDegrees(p.yRot);
+        String[] names = {"Ю", "ЮЗ", "З", "СЗ", "С", "СВ", "В", "ЮВ"};
+        int mid = x + cw / 2;
+        for (int k = 0; k < 24; k++) { // мелкие деления через каждые 15 градусов
+            if (k % 3 == 0) continue;
+            float d = MathHelper.wrapDegrees((float) (k * 15) - yaw);
+            if (Math.abs(d) >= 80f) continue;
+            int px = mid + Math.round(d * (cw / 2f - 8f) / 80f);
+            AbstractGui.fill(ms, px, y + ch - 5, px + 1, y + ch - 2, 0x66FFFFFF);
+        }
+        for (int i = 0; i < 8; i++) {
+            float d = MathHelper.wrapDegrees((float) (i * 45) - yaw);
+            if (Math.abs(d) >= 80f) continue;
+            int px = mid + Math.round(d * (cw / 2f - 8f) / 80f);
+            boolean cardinal = i % 2 == 0;
+            mc.font.drawShadow(ms, names[i], px - mc.font.width(names[i]) / 2f, (float) (y + 4),
+                    cardinal ? WHITE : LABEL);
+        }
+        AbstractGui.fill(ms, mid - 1, y + ch - 3, mid + 2, y + ch - 1, Config.c2());
+        AbstractGui.fill(ms, mid, y + ch - 4, mid + 1, y + ch - 3, Config.c2());
+    }
+
+    // ================= График FPS =================
+    private static int fpsGraph(MatrixStack ms, Minecraft mc, int x, int y) {
+        int w = IW, h = 38;
+        panel(ms, x, y, w, h);
+        text(ms, mc.font, "График FPS", x + 9, y + 4, LABEL);
+        int max = 60;
+        for (int v : HIST) max = Math.max(max, v);
+        int base = y + h - 5, maxH = 18, bx = x + 9;
+        for (int i = 0; i < HIST.length; i++) {
+            int v = HIST[i];
+            int bh = Math.max(1, Math.round(v * maxH / (float) max));
+            int col = v >= 60 ? GREEN : v >= 30 ? YELLOW : RED;
+            AbstractGui.fill(ms, bx + i * 3, base - bh, bx + i * 3 + 2, base, col);
+        }
+        return y + h + 4;
+    }
+
+    // ================= Уведомления и предупреждения =================
+    static void toast(String text, int color) {
+        toastText = text;
+        toastColor = color;
+        toastTime = System.currentTimeMillis();
+    }
+
+    private static void warnings(ClientPlayerEntity p) {
+        long now = System.currentTimeMillis();
+        if (now - lastWarn < 15000L) return;
+        float hp = p.getHealth();
+        if (hp > 0f && hp <= 6f) {
+            toast("Мало здоровья!", RED);
+            lastWarn = now;
+            return;
+        }
+        EquipmentSlotType[] slots = {EquipmentSlotType.HEAD, EquipmentSlotType.CHEST,
+                EquipmentSlotType.LEGS, EquipmentSlotType.FEET};
+        for (EquipmentSlotType slot : slots) {
+            ItemStack st = p.getItemBySlot(slot);
+            if (!st.isEmpty() && st.isDamageableItem()) {
+                float frac = (st.getMaxDamage() - st.getDamageValue()) / (float) st.getMaxDamage();
+                if (frac < 0.1f) {
+                    toast("Броня почти сломана!", YELLOW);
+                    lastWarn = now;
+                    return;
+                }
+            }
+        }
+    }
+
+    private static void drawToast(MatrixStack ms, Minecraft mc, int w, int h) {
+        long dt = System.currentTimeMillis() - toastTime;
+        if (toastText.isEmpty() || dt > 2400L) return;
+        float a = dt < 200L ? dt / 200f : dt > 2000L ? (2400L - dt) / 400f : 1f;
+        a = MathHelper.clamp(a, 0f, 1f);
+        if (a < 0.05f) return;
+        FontRenderer f = mc.font;
+        int tw = f.width(toastText) + 24, th = 18;
+        int x = (w - tw) / 2;
+        int y = h - 72 - Math.round((1f - Math.min(1f, dt / 200f)) * 8f);
+        surface(ms, x, y, tw, th, Config.radius, panelColor(), false);
+        int alpha = ((int) (255 * a)) << 24;
+        rr(ms, x + 5, y + 4, 2, th - 8, 1, (toastColor & 0x00FFFFFF) | alpha);
+        f.drawShadow(ms, toastText, (float) (x + 13), (float) (y + 5), (toastColor & 0x00FFFFFF) | alpha);
+    }
+
+    // ================= Liquid Glass =================
+    static int glassAlpha() {
+        return Math.round(MathHelper.clamp(Config.opacity, 0.3f, 1f) * 90f);
+    }
+
+    /** Универсальная поверхность: обычная тёмная или стеклянная. */
+    static void surface(MatrixStack ms, int x, int y, int w, int h, int r, int color, boolean accentLine) {
+        if (Config.glass) {
+            glassRectA(ms, x, y, w, h, Math.max(r, 3), accentLine, glassAlpha());
+            return;
+        }
+        shadow(ms, x, y, w, h, r);
+        rr(ms, x, y, w, h, r, color);
+        if (accentLine && w > 12) {
+            for (int i = 6; i < w - 6; i += 2) {
+                AbstractGui.fill(ms, x + i, y + h - 1, Math.min(x + i + 2, x + w - 6), y + h, grad(i / (float) w));
+            }
+        }
+    }
+
+    private static int insetOf(int r, int i) {
+        double dy = r - i - 0.5;
+        return (int) Math.round(r - Math.sqrt(r * r - dy * dy));
+    }
+
+    /** Скруглённый прямоугольник с вертикальным градиентом. */
+    static void gradRR(MatrixStack ms, int x, int y, int w, int h, int r, int top, int bottom) {
+        r = Math.min(r, Math.min(w, h) / 2);
+        for (int j = 0; j < h; j++) {
+            int inset = 0;
+            if (r > 0) {
+                if (j < r) inset = insetOf(r, j);
+                else if (j >= h - r) inset = insetOf(r, h - 1 - j);
+            }
+            AbstractGui.fill(ms, x + inset, y + j, x + w - inset, y + j + 1,
+                    lerp(top, bottom, j / (float) Math.max(1, h - 1)));
+        }
+    }
+
+    /** Тонкая скруглённая рамка в 1 пиксель. */
+    static void rrOutline(MatrixStack ms, int x, int y, int w, int h, int r, int c) {
+        r = Math.min(r, Math.min(w, h) / 2);
+        if (r <= 0) {
+            AbstractGui.fill(ms, x, y, x + w, y + 1, c);
+            AbstractGui.fill(ms, x, y + h - 1, x + w, y + h, c);
+            AbstractGui.fill(ms, x, y + 1, x + 1, y + h - 1, c);
+            AbstractGui.fill(ms, x + w - 1, y + 1, x + w, y + h - 1, c);
+            return;
+        }
+        int prev = r;
+        for (int i = 0; i < r; i++) {
+            int inset = insetOf(r, i);
+            if (i == 0) {
+                AbstractGui.fill(ms, x + inset, y, x + w - inset, y + 1, c);
+                AbstractGui.fill(ms, x + inset, y + h - 1, x + w - inset, y + h, c);
+            } else {
+                int end = Math.max(inset + 1, prev);
+                AbstractGui.fill(ms, x + inset, y + i, x + end, y + i + 1, c);
+                AbstractGui.fill(ms, x + w - end, y + i, x + w - inset, y + i + 1, c);
+                AbstractGui.fill(ms, x + inset, y + h - 1 - i, x + end, y + h - i, c);
+                AbstractGui.fill(ms, x + w - end, y + h - 1 - i, x + w - inset, y + h - i, c);
+            }
+            prev = inset;
+        }
+        AbstractGui.fill(ms, x, y + r, x + 1, y + h - r, c);
+        AbstractGui.fill(ms, x + w - 1, y + r, x + w, y + h - r, c);
+    }
+
+    /** Стеклянная плашка: матовый градиент, яркая кромка, бегущий блик. a - плотность (0..255). */
+    static void glassRectA(MatrixStack ms, int x, int y, int w, int h, int r, boolean accent, int a) {
+        r = Math.min(r, Math.min(w, h) / 2);
+        a = MathHelper.clamp(a, 0, 255);
+        rr(ms, x - 1, y - 1, w + 2, h + 2, r + 1, 0x20000000);
+        int topC = (Math.min(255, a + 28) << 24) | 0x56668C;
+        int botC = (a << 24) | 0x0C1120;
+        gradRR(ms, x, y, w, h, r, topC, botC);
+        rrOutline(ms, x, y, w, h, r, 0x5CFFFFFF);
+        if (w > 2 * r + 4) {
+            AbstractGui.fill(ms, x + r, y + 1, x + w - r, y + 2, 0x24FFFFFF);
+            int len = Math.max(14, w / 5);
+            float ph = (System.currentTimeMillis() % 4200L) / 4200f;
+            int start = x + r + Math.round((w - 2 * r + len) * ph) - len;
+            int s0 = Math.max(start, x + r), s1 = Math.min(start + len, x + w - r);
+            if (s1 > s0) {
+                AbstractGui.fill(ms, s0, y, s1, y + 1, 0xCCFFFFFF);
+                AbstractGui.fill(ms, s0, y + 1, s1, y + 2, 0x30FFFFFF);
+            }
+            if (accent) {
+                for (int i = r; i < w - r; i += 2) {
+                    AbstractGui.fill(ms, x + i, y + h - 2, Math.min(x + i + 2, x + w - r), y + h - 1,
+                            (grad(i / (float) w) & 0x00FFFFFF) | 0x99000000);
+                }
+            }
+        }
+    }
+
     // ================= Помощники рисования =================
     static void shadow(MatrixStack ms, int x, int y, int w, int h, int r) {
         rr(ms, x - 2, y - 2, w + 4, h + 4, r + 2, 0x1A000000);
@@ -335,14 +605,19 @@ public class Hud {
     }
 
     static void panel(MatrixStack ms, int x, int y, int w, int h) {
-        shadow(ms, x, y, w, h, 4);
-        rr(ms, x, y, w, h, 4, panelColor());
-        for (int i = 4; i < h - 4; i++) { // тонкая градиентная полоска слева
-            AbstractGui.fill(ms, x, y + i, x + 2, y + i + 1, lerp(Config.c1(), Config.c2(), i / (float) h));
+        int r = Config.radius;
+        if (Config.glass) {
+            glassRectA(ms, x, y, w, h, Math.max(r, 3), true, glassAlpha());
+            return;
+        }
+        shadow(ms, x, y, w, h, r);
+        rr(ms, x, y, w, h, r, panelColor());
+        for (int i = Math.max(r, 2); i < h - Math.max(r, 2); i++) {
+            AbstractGui.fill(ms, x, y + i, x + 2, y + i + 1, grad(i / (float) h));
         }
     }
 
-    /** Настоящий скруглённый прямоугольник (радиус r). */
+    /** Скруглённый прямоугольник (радиус r). */
     static void rr(MatrixStack ms, int x, int y, int w, int h, int r, int c) {
         r = Math.min(r, Math.min(w, h) / 2);
         if (r <= 0) {
@@ -362,13 +637,31 @@ public class Hud {
         rr(ms, x, y, w, h, 3, c);
     }
 
-    /** Текст с градиентом акцентных цветов, возвращает x конца текста. */
+    /** Цвет градиента акцента в точке pos (0..1); при включённом «переливании» плавно смещается во времени. */
+    static int grad(float pos) {
+        float k = pos;
+        if (Config.ON[Config.ANIMATE]) {
+            float phase = (System.currentTimeMillis() % 3000L) / 3000f;
+            float q = (pos + phase) % 1f;
+            k = q < 0.5f ? q * 2f : (1f - q) * 2f;
+        }
+        return lerp(Config.c1(), Config.c2(), k);
+    }
+
+    /** Переливающийся текст: градиент плюс бегущий блик. Возвращает x конца текста. */
     static int gradText(MatrixStack ms, FontRenderer f, String s, int x, int y) {
         int cx = x;
-        for (int i = 0; i < s.length(); i++) {
+        int n = s.length();
+        float sweep = (System.currentTimeMillis() % 2200L) / 2200f * 1.5f - 0.25f;
+        for (int i = 0; i < n; i++) {
             String ch = s.substring(i, i + 1);
-            f.drawShadow(ms, ch, (float) cx, (float) y,
-                    lerp(Config.c1(), Config.c2(), i / (float) Math.max(1, s.length() - 1)));
+            float pos = i / (float) Math.max(1, n - 1);
+            int col = grad(pos);
+            if (Config.ON[Config.ANIMATE]) {
+                float shine = Math.max(0f, 1f - Math.abs(pos - sweep) * 5f);
+                col = lerp(col, 0xFFFFFFFF, shine * 0.75f);
+            }
+            f.drawShadow(ms, ch, (float) cx, (float) y, col);
             cx += f.width(ch);
         }
         return cx;
@@ -394,7 +687,14 @@ public class Hud {
 
     private static void countFps() {
         frames++;
+        sampleFrames++;
         long now = System.currentTimeMillis();
+        if (now - lastSample >= 200) {
+            System.arraycopy(HIST, 1, HIST, 0, HIST.length - 1);
+            HIST[HIST.length - 1] = sampleFrames * 5;
+            sampleFrames = 0;
+            lastSample = now;
+        }
         if (now - lastFpsTime >= 1000) {
             fps = frames;
             frames = 0;

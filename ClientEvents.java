@@ -19,6 +19,7 @@ public class ClientEvents {
     public static final KeyBinding MENU = new KeyBinding(
             "key.visuals.menu", InputMappings.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "key.categories.visuals");
 
+    private static long lastBind = 0L;
     private static float zoomCurrent = 1f; // плавное значение FOV-множителя
     private static final ArrayDeque<Long> LEFT = new ArrayDeque<>();
     private static final ArrayDeque<Long> RIGHT = new ArrayDeque<>();
@@ -57,11 +58,33 @@ public class ClientEvents {
         }
     }
 
+    /** Бинды: нажатие клавиши отправляет выбранную пользователем команду (с задержкой 0.4 с). */
+    @SubscribeEvent
+    public void onKey(InputEvent.KeyInputEvent e) {
+        if (e.getAction() != GLFW.GLFW_PRESS) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || mc.player == null) return;
+        long now = System.currentTimeMillis();
+        if (now - lastBind < 400L) return;
+        for (int i = 0; i < Config.BIND_COUNT; i++) {
+            String cmd = Config.bindCmd[i] == null ? "" : Config.bindCmd[i].trim();
+            if (Config.bindKey[i] == e.getKey() && !cmd.isEmpty()) {
+                mc.player.chat(cmd);
+                lastBind = now;
+                if (Config.ON[Config.NOTIFY]) Hud.toast("Отправлено: " + cmd, Hud.GREEN);
+                break;
+            }
+        }
+    }
+
     @SubscribeEvent
     public void onMouse(InputEvent.MouseInputEvent e) {
         if (e.getAction() != GLFW.GLFW_PRESS || Minecraft.getInstance().screen != null) return;
         long now = System.currentTimeMillis();
-        if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) LEFT.addLast(now);
+        if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            LEFT.addLast(now);
+            if (Minecraft.getInstance().crosshairPickEntity != null) Hud.hitTime = now; // для хит-маркера
+        }
         if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) RIGHT.addLast(now);
     }
 
