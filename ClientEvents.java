@@ -1,6 +1,10 @@
 package com.example.visuals;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.player.ClientPlayerEntity;
+import net.minecraft.particles.IParticleData;
+import net.minecraft.particles.ParticleTypes;
+import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.client.util.InputMappings;
 import net.minecraft.util.math.MathHelper;
@@ -20,6 +24,8 @@ public class ClientEvents {
             "key.visuals.menu", InputMappings.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "key.categories.visuals");
 
     private static long lastBind = 0L;
+    private static long lastAuto = 0L;
+    private static boolean wasOnGround = true;
     private static float zoomCurrent = 1f; // плавное значение FOV-множителя
     private static final ArrayDeque<Long> LEFT = new ArrayDeque<>();
     private static final ArrayDeque<Long> RIGHT = new ArrayDeque<>();
@@ -40,6 +46,62 @@ public class ClientEvents {
         Minecraft mc = Minecraft.getInstance();
         while (MENU.consumeClick()) {
             if (mc.screen == null && mc.player != null) mc.setScreen(new MenuScreen());
+        }
+        tickExtras(mc);
+    }
+
+    private static IParticleData particle(int t) {
+        switch (t) {
+            case 1: return ParticleTypes.FLAME;
+            case 2: return ParticleTypes.HEART;
+            case 3: return ParticleTypes.HAPPY_VILLAGER;
+            case 4: return ParticleTypes.NOTE;
+            case 5: return ParticleTypes.CRIT;
+            default: return ParticleTypes.END_ROD;
+        }
+    }
+
+    /** Следы, круг прыжка и авто-команда (всё выполняется на клиенте). */
+    private void tickExtras(Minecraft mc) {
+        ClientPlayerEntity p = mc.player;
+        if (p == null || mc.level == null) {
+            wasOnGround = true;
+            return;
+        }
+        boolean onGround = p.isOnGround();
+        Vector3d v = p.getDeltaMovement();
+        if (!mc.isPaused()) {
+            if (Config.ON[Config.TRAILS] && (v.x * v.x + v.z * v.z > 0.0009 || !onGround)) {
+                for (int i = 0; i < 2; i++) {
+                    mc.level.addParticle(particle(Config.particleType),
+                            p.getX() + (Math.random() - 0.5) * 0.4, p.getY() + 0.1 + Math.random() * 0.2,
+                            p.getZ() + (Math.random() - 0.5) * 0.4, 0.0, 0.01, 0.0);
+                }
+            }
+            if (Config.ON[Config.JUMPCIRCLE] && wasOnGround && !onGround && v.y > 0.1) {
+                double r = Config.circleSize;
+                for (int k = 0; k < 28; k++) {
+                    double a = k * (Math.PI * 2.0 / 28.0);
+                    mc.level.addParticle(particle(Config.particleType),
+                            p.getX() + Math.cos(a) * r, p.getY() + 0.05, p.getZ() + Math.sin(a) * r,
+                            Math.cos(a) * 0.04, 0.01, Math.sin(a) * 0.04);
+                }
+            }
+        }
+        wasOnGround = onGround;
+
+        if (!Config.ON[Config.AUTOCMD]) {
+            lastAuto = 0L;
+        } else if (mc.screen == null) {
+            String cmd = Config.autoCmd == null ? "" : Config.autoCmd.trim();
+            long now = System.currentTimeMillis();
+            if (lastAuto == 0L) lastAuto = now;
+            long interval = Math.max(10, Config.autoInterval) * 1000L;
+            if (!cmd.isEmpty() && now - lastAuto >= interval) {
+                p.chat(cmd);
+                lastAuto = now;
+                if (Config.ON[Config.NOTIFY]) Hud.toast("Авто: " + cmd, Hud.GREEN);
+            }
         }
     }
 

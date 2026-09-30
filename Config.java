@@ -15,7 +15,8 @@ public class Config {
             "FPS", "Координаты", "Курс", "Скорость", "Пинг", "Свет",
             "Время", "Эффекты зелий", "Прочность", "Клавиши и CPS", "Свой прицел", "Инфо о цели", "Ватермарка",
             "Биом", "Игровое время", "Счётчик предметов", "Хит-маркер", "Переливание цвета",
-            "Компас", "График FPS", "Предупреждения", "Уведомления биндов"
+            "Компас", "График FPS", "Предупреждения", "Уведомления биндов",
+            "Следы", "Круг прыжка", "GPS-метка", "Авто-команда"
     };
     public static final String[] DESCS = {
             "Кадры в секунду", "Позиция XYZ", "Сторона света и угол", "Блоков в секунду", "Задержка до сервера",
@@ -24,12 +25,15 @@ public class Config {
             "В каком биоме вы стоите", "Время суток в мире", "Тотемы, яблоки, жемчуг, стрелы",
             "Вспышка при ударе по цели", "Анимация градиента и текста",
             "Полоса направлений сверху", "История кадров за 8 секунд", "Мало здоровья и прочности брони",
-            "Показ при отправке команды"
+            "Показ при отправке команды",
+            "Частицы за вами при движении", "Кольцо частиц при прыжке", "Стрелка и расстояние до точки",
+            "Отправка команды по таймеру"
     };
     public static final int FPS = 0, COORDS = 1, DIR = 2, SPEED = 3, PING = 4, LIGHT = 5,
             TIME = 6, EFFECTS = 7, DURABILITY = 8, KEYS = 9, CROSSHAIR = 10, TARGET = 11, WATERMARK = 12,
             BIOME = 13, GAMETIME = 14, ITEMS = 15, HITMARKER = 16, ANIMATE = 17,
-            COMPASS = 18, FPSGRAPH = 19, WARN = 20, NOTIFY = 21;
+            COMPASS = 18, FPSGRAPH = 19, WARN = 20, NOTIFY = 21,
+            TRAILS = 22, JUMPCIRCLE = 23, GPS = 24, AUTOCMD = 25;
 
     public static final boolean[] ON = new boolean[NAMES.length];
 
@@ -58,7 +62,15 @@ public class Config {
     public static float opacity = 0.72f;
     public static int radius = 4;
     public static boolean infoRight = false;
-    public static boolean glass = false; // стиль Liquid Glass
+    public static boolean glass = true; // стиль Liquid Glass (по умолчанию включён)
+    public static int particleType = 0;
+    public static float circleSize = 1.5f;
+    public static String gpsX = "", gpsZ = "";
+    public static String autoCmd = "";
+    public static int autoInterval = 60; // секунд, минимум 10
+    // смещения элементов HUD (редактор позиций)
+    public static final int[] offX = new int[10];
+    public static final int[] offY = new int[10];
     public static double zoom = 0.25;
 
     static {
@@ -111,6 +123,14 @@ public class Config {
         ON[ITEMS] = false;
         ON[COMPASS] = false;
         ON[FPSGRAPH] = false;
+        ON[TRAILS] = false;
+        ON[JUMPCIRCLE] = false;
+        ON[GPS] = false;
+        ON[AUTOCMD] = false;
+        Arrays.fill(offX, 0);
+        Arrays.fill(offY, 0);
+        particleType = 0;
+        circleSize = 1.5f;
         preset = 0;
         hue = 0.75f;
         crosshairStyle = 0;
@@ -120,7 +140,7 @@ public class Config {
         opacity = 0.72f;
         radius = 4;
         infoRight = false;
-        glass = false;
+        glass = true;
         zoom = 0.25;
     }
 
@@ -146,7 +166,17 @@ public class Config {
             opacity = Math.max(0.3f, Math.min(1f, Float.parseFloat(p.getProperty("opacity", "0.72"))));
             radius = clampInt(Integer.parseInt(p.getProperty("radius", "4")), 0, 8);
             infoRight = Boolean.parseBoolean(p.getProperty("inforight", "false"));
-            glass = Boolean.parseBoolean(p.getProperty("glass", "false"));
+            glass = Boolean.parseBoolean(p.getProperty("glass", "true"));
+            particleType = clampInt(Integer.parseInt(p.getProperty("ptype", "0")), 0, 5);
+            circleSize = Math.max(0.5f, Math.min(2.5f, Float.parseFloat(p.getProperty("circle", "1.5"))));
+            gpsX = p.getProperty("gpsx", "");
+            gpsZ = p.getProperty("gpsz", "");
+            autoCmd = p.getProperty("autocmd", "");
+            autoInterval = clampInt(Integer.parseInt(p.getProperty("autoint", "60")), 10, 300);
+            for (int i = 0; i < offX.length; i++) {
+                offX[i] = Integer.parseInt(p.getProperty("ox" + i, "0"));
+                offY[i] = Integer.parseInt(p.getProperty("oy" + i, "0"));
+            }
             zoom = Math.max(0.05, Math.min(0.6, Double.parseDouble(p.getProperty("zoom", "0.25"))));
             for (int i = 0; i < BIND_COUNT; i++) {
                 bindKey[i] = Integer.parseInt(p.getProperty("bk" + i, "-1"));
@@ -171,6 +201,16 @@ public class Config {
             p.setProperty("radius", String.valueOf(radius));
             p.setProperty("inforight", String.valueOf(infoRight));
             p.setProperty("glass", String.valueOf(glass));
+            p.setProperty("ptype", String.valueOf(particleType));
+            p.setProperty("circle", String.valueOf(circleSize));
+            p.setProperty("gpsx", gpsX);
+            p.setProperty("gpsz", gpsZ);
+            p.setProperty("autocmd", autoCmd);
+            p.setProperty("autoint", String.valueOf(autoInterval));
+            for (int i = 0; i < offX.length; i++) {
+                p.setProperty("ox" + i, String.valueOf(offX[i]));
+                p.setProperty("oy" + i, String.valueOf(offY[i]));
+            }
             p.setProperty("zoom", String.valueOf(zoom));
             for (int i = 0; i < BIND_COUNT; i++) {
                 p.setProperty("bk" + i, String.valueOf(bindKey[i]));

@@ -18,15 +18,20 @@ import java.util.Locale;
 
 public class MenuScreen extends Screen {
     private static final int W = 400, H = 256, SIDE = 100, CW = 276;
-    private static final int TAB_STEP = 22, TAB_H = 20;
-    private static final String[] TABS = {"Инфо", "Мир", "Интерфейс", "Прицел", "Бинды", "Цвета", "Панели", "Настройки"};
+    private static final int TAB_STEP = 19, TAB_H = 17;
+    private static final String[] TABS = {"Инфо", "Мир", "Интерфейс", "Прицел", "Эффекты",
+            "Утилиты", "Бинды", "Цвета", "Панели", "Настройки"};
     private static final int[][] TAB_MODULES = {
             {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME},
             {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.COMPASS, Config.WARN},
             {Config.EFFECTS, Config.DURABILITY, Config.KEYS, Config.TARGET, Config.WATERMARK, Config.ITEMS, Config.HITMARKER},
-            {}, {}, {}, {}, {}
+            {}, {}, {}, {}, {}, {}, {}
     };
     private static final String[] STYLES = {"Крест", "Точка", "Круг", "Т-образный"};
+    private static final String[] PARTICLES = {"Звёзды", "Огонь", "Сердца", "Искры", "Ноты", "Крит"};
+
+    // идентификаторы полей ввода: 0..BIND_COUNT-1 - команды биндов, 10/11 - GPS X/Z, 12 - авто-команда
+    private static final int F_GPSX = 10, F_GPSZ = 11, F_AUTO = 12;
 
     private static class Hit {
         final int x, y, w, h, id;
@@ -40,8 +45,10 @@ public class MenuScreen extends Screen {
     private int tab = 0;
     private long tabAt = 0L;
     private int drag = -1;
-    private int listening = -1; // какой бинд ждёт нажатия клавиши
-    private int editing = -1;   // в каком бинде вводится команда
+    private int listening = -1;
+    private int editing = -1;
+    private String search = "";
+    private boolean searchFocus = false;
     private final long openAt = System.currentTimeMillis();
     private int px, py;
 
@@ -83,7 +90,31 @@ public class MenuScreen extends Screen {
         }
     }
 
-    // ---- общие «карточки»: обычные или стеклянные ----
+    // ---- поля ввода ----
+    private String getField(int f) {
+        if (f >= 0 && f < Config.BIND_COUNT) return Config.bindCmd[f];
+        if (f == F_GPSX) return Config.gpsX;
+        if (f == F_GPSZ) return Config.gpsZ;
+        return Config.autoCmd;
+    }
+
+    private void setField(int f, String v) {
+        if (f >= 0 && f < Config.BIND_COUNT) Config.bindCmd[f] = v;
+        else if (f == F_GPSX) Config.gpsX = v;
+        else if (f == F_GPSZ) Config.gpsZ = v;
+        else Config.autoCmd = v;
+    }
+
+    private boolean allowedChar(int f, char c) {
+        if (f == F_GPSX || f == F_GPSZ) return (c >= '0' && c <= '9') || c == '-';
+        return SharedConstants.isAllowedChatCharacter(c);
+    }
+
+    private int maxLen(int f) {
+        return (f == F_GPSX || f == F_GPSZ) ? 8 : 100;
+    }
+
+    // ---- «карточки»: обычные или стеклянные ----
     private void card(MatrixStack ms, int x, int y, int w, int h, int r, int base, int hoverColor, float hov) {
         if (Config.glass) {
             Hud.glassRectA(ms, x, y, w, h, r, false, Math.round(0x30 + 0x28 * hov));
@@ -125,7 +156,6 @@ public class MenuScreen extends Screen {
         hits.clear();
         int c1 = Config.c1(), c2 = Config.c2();
 
-        // ---- окно ----
         int glow = (Hud.lerp(c1, c2, 0.5f) & 0x00FFFFFF) | 0x0C000000;
         for (int k = 4; k >= 1; k--) Hud.rr(ms, px - k * 2, py - k * 2, W + k * 4, H + k * 4, 10 + k * 2, glow);
         if (Config.glass) {
@@ -146,68 +176,92 @@ public class MenuScreen extends Screen {
         ms.scale(1.2f, 1.2f, 1f);
         Hud.gradText(ms, font, "PrimeVisual", Math.round((px + 12) / 1.2f), Math.round((py + 11) / 1.2f));
         ms.popPose();
-        font.draw(ms, "Beta • 1.16.5", px + 14, py + 26, 0xFF5D6076);
+        font.draw(ms, "Right Shift - меню", px + 14, py + 26, 0xFF5D6076);
 
-        int ty0 = py + 44;
+        int ty0 = py + 42;
         tabInd += (tab * (float) TAB_STEP - tabInd) * 0.25f;
         Hud.rr(ms, px + 8, ty0 + Math.round(tabInd), SIDE - 16, TAB_H, 6,
                 (Hud.lerp(c1, c2, 0.5f) & 0x00FFFFFF) | 0x40000000);
-        Hud.rr(ms, px + 8, ty0 + Math.round(tabInd) + 4, 2, TAB_H - 8, 1, Hud.lerp(c1, c2, 0.5f));
+        Hud.rr(ms, px + 8, ty0 + Math.round(tabInd) + 3, 2, TAB_H - 6, 1, Hud.lerp(c1, c2, 0.5f));
         for (int k = 0; k < TABS.length; k++) {
             boolean sel = k == tab;
-            font.drawShadow(ms, TABS[k], px + 20, ty0 + k * TAB_STEP + 6, sel ? Hud.WHITE : 0xFF8C90A8);
+            font.drawShadow(ms, TABS[k], px + 20, ty0 + k * TAB_STEP + 5, sel ? Hud.WHITE : 0xFF8C90A8);
             hits.add(new Hit(px + 8, ty0 + k * TAB_STEP, SIDE - 16, TAB_H, 200 + k));
         }
-        font.draw(ms, "Right Shift - меню", px + 10, py + H - 16, 0xFF4D5066);
+        font.draw(ms, "by whiteshapka", px + 14, py + H - 14, 0xFF4D5066);
 
-        // ---- кнопка закрытия ----
+        // ---- закрыть ----
         boolean hovClose = in(mx, my, px + W - 26, py + 8, 16, 16);
         Hud.rr(ms, px + W - 26, py + 8, 16, 16, 8, hovClose ? 0x66FF5566 : 0x30FFFFFF);
         font.drawShadow(ms, "×", px + W - 26 + 8 - font.width("×") / 2f, py + 12, Hud.WHITE);
         hits.add(new Hit(px + W - 26, py + 8, 16, 16, 502));
 
-        // ---- заголовок ----
+        // ---- заголовок и поиск ----
         int cx = px + SIDE + 12;
         ms.pushPose();
         ms.scale(1.3f, 1.3f, 1f);
         font.drawShadow(ms, TABS[tab], cx / 1.3f, (py + 13) / 1.3f, Hud.WHITE);
         ms.popPose();
-        for (int x = 0; x < CW - 22; x += 2) {
+
+        int sx = cx + 100, sw = 156;
+        card(ms, sx, py + 10, sw, 16, 6, 0xFF171822, 0xFF21222F, in(mx, my, sx, py + 10, sw, 16) ? 1f : 0f);
+        if (searchFocus) Hud.rrOutline(ms, sx, py + 10, sw, 16, 6, Config.c2());
+        boolean blink = (System.currentTimeMillis() / 450L) % 2L == 0L;
+        if (search.isEmpty() && !searchFocus) {
+            font.draw(ms, "Поиск функций...", sx + 8, py + 14, 0xFF5D6076);
+        } else {
+            String shown = fitTail(search + (searchFocus && blink ? "|" : ""), sw - 16);
+            font.drawShadow(ms, shown, sx + 8, py + 14, Hud.WHITE);
+        }
+        hits.add(new Hit(sx, py + 10, sw, 16, 700));
+
+        for (int x = 0; x < CW; x += 2) {
             AbstractGui.fill(ms, cx + x, py + 34, cx + x + 2, py + 35, Hud.grad(x / (float) CW));
         }
 
-        // ---- содержимое вкладки с лёгким «въездом» ----
+        // ---- содержимое ----
         float sp = Math.min(1f, (System.currentTimeMillis() - tabAt) / 180f);
         float slide = (1f - (1f - (1f - sp) * (1f - sp))) * 14f;
         RenderSystem.pushMatrix();
         RenderSystem.translatef(slide, 0f, 0f);
         try {
             int y = py + 44;
-            switch (tab) {
-                case 0:
-                case 1:
-                case 2:
-                    for (int idx : TAB_MODULES[tab]) y = moduleCard(ms, idx, cx, y, mx, my);
-                    break;
-                case 3:
-                    drawCrosshairTab(ms, cx, y, mx, my);
-                    break;
-                case 4:
-                    drawBindsTab(ms, cx, y, mx, my);
-                    break;
-                case 5:
-                    drawColorsTab(ms, cx, y, mx, my);
-                    break;
-                case 6:
-                    drawPanelsTab(ms, cx, y, mx, my);
-                    break;
-                default:
-                    drawSettingsTab(ms, cx, y, mx, my);
-                    break;
+            String q = search.trim().toLowerCase(Locale.ROOT);
+            if (!q.isEmpty()) {
+                drawSearchResults(ms, cx, y, mx, my, q);
+            } else {
+                switch (tab) {
+                    case 0:
+                    case 1:
+                    case 2:
+                        for (int idx : TAB_MODULES[tab]) y = moduleCard(ms, idx, cx, y, mx, my);
+                        break;
+                    case 3: drawCrosshairTab(ms, cx, y, mx, my); break;
+                    case 4: drawEffectsTab(ms, cx, y, mx, my); break;
+                    case 5: drawUtilsTab(ms, cx, y, mx, my); break;
+                    case 6: drawBindsTab(ms, cx, y, mx, my); break;
+                    case 7: drawColorsTab(ms, cx, y, mx, my); break;
+                    case 8: drawPanelsTab(ms, cx, y, mx, my); break;
+                    default: drawSettingsTab(ms, cx, y, mx, my); break;
+                }
             }
         } finally {
             RenderSystem.popMatrix();
         }
+    }
+
+    // ---- поиск ----
+    private void drawSearchResults(MatrixStack ms, int cx, int y, int mx, int my, String q) {
+        int found = 0;
+        for (int i = 0; i < Config.ON.length && found < 7; i++) {
+            String n = Config.NAMES[i].toLowerCase(Locale.ROOT);
+            String d = Config.DESCS[i].toLowerCase(Locale.ROOT);
+            if (n.contains(q) || d.contains(q)) {
+                y = moduleCard(ms, i, cx, y, mx, my);
+                found++;
+            }
+        }
+        if (found == 0) label(ms, "Ничего не найдено", cx, y + 4);
     }
 
     // ---- вкладка «Прицел» ----
@@ -244,6 +298,43 @@ public class MenuScreen extends Screen {
                 Hud.crosshairColor(Config.crosshairColor));
     }
 
+    // ---- вкладка «Эффекты» (частицы) ----
+    private void drawEffectsTab(MatrixStack ms, int cx, int y, int mx, int my) {
+        y = moduleCard(ms, Config.TRAILS, cx, y, mx, my);
+        y = moduleCard(ms, Config.JUMPCIRCLE, cx, y, mx, my);
+        label(ms, "Тип частиц", cx, y + 1);
+        y += 12;
+        int cw = (CW - 5 * 4) / 6;
+        for (int k = 0; k < PARTICLES.length; k++) {
+            int x = cx + k * (cw + 4);
+            boolean sel = k == Config.particleType;
+            if (sel) Hud.rr(ms, x, y, cw, 20, 5, Hud.lerp(Config.c1(), Config.c2(), 0.5f));
+            else card(ms, x, y, cw, 20, 5, 0xFF171822, 0xFF21222F, in(mx, my, x, y, cw, 20) ? 1f : 0f);
+            font.drawShadow(ms, PARTICLES[k], x + (cw - font.width(PARTICLES[k])) / 2f, y + 6, Hud.WHITE);
+            hits.add(new Hit(x, y, cw, 20, 430 + k));
+        }
+        y += 26;
+        y = sliderBlock(ms, cx, y, "Размер круга прыжка", String.format(Locale.ROOT, "%.1f бл", Config.circleSize),
+                106, (Config.circleSize - 0.5f) / 2f);
+        label(ms, "Частицы видны только вам (клиентская сторона)", cx, y);
+    }
+
+    // ---- вкладка «Утилиты» (GPS и авто-команда) ----
+    private void drawUtilsTab(MatrixStack ms, int cx, int y, int mx, int my) {
+        y = moduleCard(ms, Config.GPS, cx, y, mx, my);
+        int fw = 90;
+        field(ms, cx, y, fw, 24, F_GPSX, "X", 710, mx, my);
+        field(ms, cx + fw + 4, y, fw, 24, F_GPSZ, "Z", 711, mx, my);
+        int bx = cx + 2 * (fw + 4);
+        button(ms, bx, y, CW - 2 * (fw + 4), 24, "Я здесь", 505, mx, my);
+        y += 27;
+        y = moduleCard(ms, Config.AUTOCMD, cx, y, mx, my);
+        field(ms, cx, y, CW, 24, F_AUTO, "/команда для отправки по таймеру", 712, mx, my);
+        y += 27;
+        sliderBlock(ms, cx, y, "Интервал авто-команды", Config.autoInterval + " сек", 107,
+                (Config.autoInterval - 10) / 290f);
+    }
+
     // ---- вкладка «Бинды» ----
     private String keyName(int code) {
         if (code < 0) return "— нет —";
@@ -264,31 +355,36 @@ public class MenuScreen extends Screen {
         return s;
     }
 
+    private void field(MatrixStack ms, int x, int y, int w, int h, int f, String placeholder,
+                       int hitId, int mx, int my) {
+        boolean ed = editing == f;
+        card(ms, x, y, w, h, 5, 0xFF171822, 0xFF21222F, in(mx, my, x, y, w, h) ? 1f : 0f);
+        if (ed) Hud.rrOutline(ms, x, y, w, h, 5, Config.c1());
+        String cur = getField(f);
+        boolean blink = (System.currentTimeMillis() / 450L) % 2L == 0L;
+        float ty = y + (h - 8) / 2f;
+        if (cur.isEmpty() && !ed) {
+            font.draw(ms, fitHead(placeholder, w - 12), x + 7, ty, 0xFF5D6076);
+        } else {
+            font.drawShadow(ms, fitTail(cur + (ed && blink ? "|" : ""), w - 14), x + 7, ty, Hud.WHITE);
+        }
+        hits.add(new Hit(x, y, w, h, hitId));
+    }
+
     private void drawBindsTab(MatrixStack ms, int cx, int y, int mx, int my) {
         y = moduleCard(ms, Config.NOTIFY, cx, y, mx, my);
         int kw = 72, rowH = 24;
-        boolean blink = (System.currentTimeMillis() / 450L) % 2L == 0L;
         for (int i = 0; i < Config.BIND_COUNT; i++) {
-            boolean lk = listening == i, ed = editing == i;
+            boolean lk = listening == i;
             card(ms, cx, y, kw, rowH, 5, 0xFF171822, 0xFF21222F, in(mx, my, cx, y, kw, rowH) ? 1f : 0f);
             if (lk) Hud.rrOutline(ms, cx, y, kw, rowH, 5, Config.c2());
-            String kn = lk ? "Нажмите..." : keyName(Config.bindKey[i]);
-            kn = fitHead(kn, kw - 8);
+            String kn = fitHead(lk ? "Нажмите..." : keyName(Config.bindKey[i]), kw - 8);
             int kc = lk ? Config.c2() : (Config.bindKey[i] < 0 ? 0xFF6C6F86 : Hud.WHITE);
             font.drawShadow(ms, kn, cx + (kw - font.width(kn)) / 2f, y + 8, kc);
             hits.add(new Hit(cx, y, kw, rowH, 600 + i));
 
             int bx = cx + kw + 4, bw = CW - kw - 4 - 28;
-            card(ms, bx, y, bw, rowH, 5, 0xFF171822, 0xFF21222F, in(mx, my, bx, y, bw, rowH) ? 1f : 0f);
-            if (ed) Hud.rrOutline(ms, bx, y, bw, rowH, 5, Config.c1());
-            String cmd = Config.bindCmd[i];
-            if (cmd.isEmpty() && !ed) {
-                font.draw(ms, "/команда", bx + 7, y + 8, 0xFF5D6076);
-            } else {
-                String shown = fitTail(cmd + (ed && blink ? "|" : ""), bw - 14);
-                font.drawShadow(ms, shown, bx + 7, y + 8, Hud.WHITE);
-            }
-            hits.add(new Hit(bx, y, bw, rowH, 620 + i));
+            field(ms, bx, y, bw, rowH, i, "/команда", 620 + i, mx, my);
 
             int dx = cx + CW - 24;
             boolean hc = in(mx, my, dx, y, 24, rowH);
@@ -367,19 +463,21 @@ public class MenuScreen extends Screen {
         String zv = String.format(Locale.ROOT, "×%.1f", 1.0 / Config.zoom);
         y = sliderBlock(ms, cx, y, "Сила зума (клавиша C)", zv, 102, (float) ((0.6 - Config.zoom) / 0.55));
         y += 2;
+        button(ms, cx, y, CW, 22, "Редактор HUD (перетаскивание элементов)", 504, mx, my);
+        y += 26;
         button(ms, cx, y, CW, 22, "Сбросить настройки", 500, mx, my);
 
-        int cy = py + H - 12 - 56;
-        card(ms, cx, cy, CW, 56, 6, 0xFF12131C, 0xFF12131C, 0f);
+        int cy = py + H - 12 - 52;
+        card(ms, cx, cy, CW, 52, 6, 0xFF12131C, 0xFF12131C, 0f);
         String title = "Сделано whiteshapka";
         float sc = 1.4f;
         float tw = font.width(title) * sc;
         ms.pushPose();
         ms.scale(sc, sc, 1f);
-        Hud.gradText(ms, font, title, Math.round((cx + (CW - tw) / 2f) / sc), Math.round((cy + 12) / sc));
+        Hud.gradText(ms, font, title, Math.round((cx + (CW - tw) / 2f) / sc), Math.round((cy + 11) / sc));
         ms.popPose();
         String sub = "PrimeVisual Beta • Forge 1.16.5";
-        font.draw(ms, sub, cx + (CW - font.width(sub)) / 2f, cy + 38, 0xFF5D6076);
+        font.draw(ms, sub, cx + (CW - font.width(sub)) / 2f, cy + 34, 0xFF5D6076);
     }
 
     private void button(MatrixStack ms, int x, int y, int w, int h, String text, int id, int mx, int my) {
@@ -425,6 +523,8 @@ public class MenuScreen extends Screen {
         else if (id == 103) Config.radius = Math.round(frac * 8f);
         else if (id == 104) Config.crosshairSize = 3 + Math.round(frac * 6f);
         else if (id == 105) Config.hue = frac;
+        else if (id == 106) Config.circleSize = Math.round((0.5f + frac * 2f) * 10f) / 10f;
+        else if (id == 107) Config.autoInterval = 10 + Math.round(frac * 58f) * 5;
     }
 
     @Override
@@ -433,13 +533,14 @@ public class MenuScreen extends Screen {
         double lx = local(dx, width), ly = local(dy, height);
         listening = -1;
         editing = -1;
+        searchFocus = false;
         for (Hit h : hits) {
             if (!in(lx, ly, h.x, h.y, h.w, h.h)) continue;
             int id = h.id;
             if (id < Config.ON.length) {
                 Config.ON[id] = !Config.ON[id];
                 click(Config.ON[id] ? 1.3f : 0.8f);
-            } else if (id >= 100 && id <= 105) {
+            } else if (id >= 100 && id <= 107) {
                 drag = id;
                 setSlider(id, lx);
             } else if (id >= 200 && id < 200 + TABS.length) {
@@ -454,6 +555,9 @@ public class MenuScreen extends Screen {
             } else if (id >= 420 && id < 425) {
                 Config.crosshairColor = id - 420;
                 click(1.1f);
+            } else if (id >= 430 && id < 436) {
+                Config.particleType = id - 430;
+                click(1.1f);
             } else if (id == 500) {
                 Config.reset();
                 click(0.7f);
@@ -466,6 +570,15 @@ public class MenuScreen extends Screen {
             } else if (id == 503) {
                 Config.glass = !Config.glass;
                 click(1.2f);
+            } else if (id == 504) {
+                click(1.0f);
+                if (minecraft != null) minecraft.setScreen(new HudEditorScreen(this));
+            } else if (id == 505) {
+                if (minecraft != null && minecraft.player != null) {
+                    Config.gpsX = String.valueOf((int) Math.floor(minecraft.player.getX()));
+                    Config.gpsZ = String.valueOf((int) Math.floor(minecraft.player.getZ()));
+                    click(1.2f);
+                }
             } else if (id >= 600 && id < 600 + Config.BIND_COUNT) {
                 listening = id - 600;
                 click(1.0f);
@@ -476,6 +589,14 @@ public class MenuScreen extends Screen {
                 Config.bindKey[id - 640] = -1;
                 Config.bindCmd[id - 640] = "";
                 click(0.7f);
+            } else if (id == 700) {
+                searchFocus = true;
+            } else if (id == 710) {
+                editing = F_GPSX;
+            } else if (id == 711) {
+                editing = F_GPSZ;
+            } else if (id == 712) {
+                editing = F_AUTO;
             }
             return true;
         }
@@ -499,7 +620,7 @@ public class MenuScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scan, int mods) {
-        if (listening != -1) { // ждём клавишу для бинда
+        if (listening != -1) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 listening = -1;
             } else if (key == GLFW.GLFW_KEY_DELETE || key == GLFW.GLFW_KEY_BACKSPACE) {
@@ -512,19 +633,30 @@ public class MenuScreen extends Screen {
             }
             return true;
         }
-        if (editing != -1) { // ввод команды
-            String cur = Config.bindCmd[editing];
+        if (editing != -1) {
+            String cur = getField(editing);
             if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 editing = -1;
             } else if (key == GLFW.GLFW_KEY_BACKSPACE) {
-                if (!cur.isEmpty()) Config.bindCmd[editing] = cur.substring(0, cur.length() - 1);
+                if (!cur.isEmpty()) setField(editing, cur.substring(0, cur.length() - 1));
             } else if (Screen.isPaste(key) && minecraft != null) {
                 String clip = minecraft.keyboardHandler.getClipboard();
                 StringBuilder sb = new StringBuilder(cur);
                 for (char c : clip.toCharArray()) {
-                    if (SharedConstants.isAllowedChatCharacter(c) && sb.length() < 100) sb.append(c);
+                    if (allowedChar(editing, c) && sb.length() < maxLen(editing)) sb.append(c);
                 }
-                Config.bindCmd[editing] = sb.toString();
+                setField(editing, sb.toString());
+            }
+            return true;
+        }
+        if (searchFocus) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                if (!search.isEmpty()) search = "";
+                else searchFocus = false;
+            } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                searchFocus = false;
+            } else if (key == GLFW.GLFW_KEY_BACKSPACE) {
+                if (!search.isEmpty()) search = search.substring(0, search.length() - 1);
             }
             return true;
         }
@@ -538,10 +670,12 @@ public class MenuScreen extends Screen {
     @Override
     public boolean charTyped(char c, int mods) {
         if (editing != -1) {
-            String cur = Config.bindCmd[editing];
-            if (SharedConstants.isAllowedChatCharacter(c) && cur.length() < 100) {
-                Config.bindCmd[editing] = cur + c;
-            }
+            String cur = getField(editing);
+            if (allowedChar(editing, c) && cur.length() < maxLen(editing)) setField(editing, cur + c);
+            return true;
+        }
+        if (searchFocus) {
+            if (SharedConstants.isAllowedChatCharacter(c) && search.length() < 24) search += c;
             return true;
         }
         return super.charTyped(c, mods);

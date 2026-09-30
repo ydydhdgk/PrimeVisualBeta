@@ -38,6 +38,14 @@ public class Hud {
     static final int RED    = 0xFFFF5566;
     private static final int IW = 150;
 
+    // идентификаторы перетаскиваемых элементов HUD
+    static final int EL_INFO = 0, EL_GRAPH = 1, EL_EFFECTS = 2, EL_DURA = 3, EL_ITEMS = 4, EL_KEYS = 5,
+            EL_TARGET = 6, EL_WATER = 7, EL_COMPASS = 8, EL_GPS = 9, EL_COUNT = 10;
+    static final String[] EL_NAMES = {"Инфо", "График FPS", "Эффекты", "Прочность", "Предметы",
+            "Клавиши", "Цель", "Ватермарка", "Компас", "GPS"};
+    private static final int[][] BOUNDS = new int[EL_COUNT][4];
+    private static final long[] SEEN = new long[EL_COUNT];
+
     static long hitTime = 0L;
     private static String toastText = "";
     private static int toastColor = 0xFFFFFFFF;
@@ -98,19 +106,56 @@ public class Hud {
             if (Config.ON[Config.WARN]) warnings(p);
             int ix = Config.infoRight ? w - IW - 6 : 6;
             int y = 6;
+            beginEl(EL_INFO);
             y = infoPanel(ms, mc, p, ix, y);
-            if (Config.ON[Config.FPSGRAPH]) y = fpsGraph(ms, mc, ix, y);
-            if (Config.ON[Config.EFFECTS]) effects(ms, mc, p, ix, y);
-            if (Config.ON[Config.DURABILITY]) durability(ms, mc, p, w, h);
-            if (Config.ON[Config.ITEMS]) itemCounter(ms, mc, p, w, h);
-            if (Config.ON[Config.KEYS]) keystrokes(ms, mc, h);
+            endEl();
+            if (Config.ON[Config.FPSGRAPH]) {
+                beginEl(EL_GRAPH);
+                y = fpsGraph(ms, mc, ix, y);
+                endEl();
+            }
+            if (Config.ON[Config.GPS]) {
+                beginEl(EL_GPS);
+                y = gps(ms, mc, p, ix, y);
+                endEl();
+            }
+            if (Config.ON[Config.EFFECTS]) {
+                beginEl(EL_EFFECTS);
+                effects(ms, mc, p, ix, y);
+                endEl();
+            }
+            if (Config.ON[Config.DURABILITY]) {
+                beginEl(EL_DURA);
+                durability(ms, mc, p, w, h);
+                endEl();
+            }
+            if (Config.ON[Config.ITEMS]) {
+                beginEl(EL_ITEMS);
+                itemCounter(ms, mc, p, w, h);
+                endEl();
+            }
+            if (Config.ON[Config.KEYS]) {
+                beginEl(EL_KEYS);
+                keystrokes(ms, mc, h);
+                endEl();
+            }
             int topY = 6;
             if (Config.ON[Config.COMPASS]) {
+                beginEl(EL_COMPASS);
                 compass(ms, mc, p, w);
+                endEl();
                 topY = 6 + 24;
             }
-            if (noScreen && Config.ON[Config.TARGET]) target(ms, mc, w, topY);
-            if (Config.ON[Config.WATERMARK]) watermark(ms, mc, w);
+            if (noScreen && Config.ON[Config.TARGET]) {
+                beginEl(EL_TARGET);
+                target(ms, mc, w, topY);
+                endEl();
+            }
+            if (Config.ON[Config.WATERMARK]) {
+                beginEl(EL_WATER);
+                watermark(ms, mc, w);
+                endEl();
+            }
             drawToast(ms, mc, w, h);
         } finally {
             RenderSystem.popMatrix();
@@ -130,6 +175,7 @@ public class Hud {
         int tw = f.width(name) + f.width(rest);
         int pw = tw + 18, ph = 17;
         int x = Config.infoRight ? 6 : w - pw - 6, y = 6;
+        mark(EL_WATER, x, y, pw, ph);
         surface(ms, x, y, pw, ph, Config.radius, panelColor(), true);
         int nx = gradText(ms, f, name, x + 9, y + 5);
         f.drawShadow(ms, rest, (float) nx, (float) (y + 5), LABEL);
@@ -190,6 +236,7 @@ public class Hud {
 
         int hgt = 8 + rows.size() * 12;
         panel(ms, x, y, IW, hgt);
+        mark(EL_INFO, x, y, IW, hgt);
         int ry = y + 6;
         for (Row r : rows) {
             text(ms, mc.font, r.label, x + 9, ry, LABEL);
@@ -214,6 +261,7 @@ public class Hud {
         Set<Effect> active = new HashSet<>();
         PotionSpriteUploader sprites = mc.getMobEffectTextures();
         int w = IW, h = 22;
+        int startY = y;
         for (EffectInstance ef : p.getActiveEffects()) {
             Effect type = ef.getEffect();
             active.add(type);
@@ -240,6 +288,7 @@ public class Hud {
             rr(ms, barX, y + 15, Math.max(2, (int) (barW * (dur > 32000 ? 1f : frac))), 3, 1, 0xFF000000 | type.getColor());
             y += h + 3;
         }
+        if (y > startY) mark(EL_EFFECTS, x, startY, w, y - startY - 3);
         MAX_DURATION.keySet().retainAll(active);
     }
 
@@ -257,6 +306,7 @@ public class Hud {
         int w = 128, h = 24, gap = 3;
         int x = sw - w - 6;
         int y = sh - 6 - items.size() * (h + gap) + gap;
+        if (!items.isEmpty()) mark(EL_DURA, x, y, w, items.size() * (h + gap) - gap);
         for (ItemStack st : items) {
             panel(ms, x, y, w, h);
             mc.getItemRenderer().renderGuiItem(st, x + 7, y + 4);
@@ -291,6 +341,7 @@ public class Hud {
         int pw = 48, ph = 22, gap = 3;
         int x = w - pw - 6;
         int y = h / 2 - (n * (ph + gap) - gap) / 2;
+        mark(EL_ITEMS, x, y, pw, n * (ph + gap) - gap);
         for (int k = 0; k < TRACKED.length; k++) {
             if (counts[k] <= 0) continue;
             panel(ms, x, y, pw, ph);
@@ -305,6 +356,7 @@ public class Hud {
         GameSettings o = mc.options;
         int s = 22, g = 2;
         int x = 6, y = sh - 6 - (s * 4 + g * 3);
+        mark(EL_KEYS, x, y, s * 3 + g * 2, s * 4 + g * 3);
         key(ms, mc, 0, "W", null, x + s + g, y, s, s, o.keyUp.isDown());
         y += s + g;
         key(ms, mc, 1, "A", null, x, y, s, s, o.keyLeft.isDown());
@@ -340,21 +392,40 @@ public class Hud {
         }
     }
 
-    // ================= Инфо о цели =================
+    // ================= Инфо о цели (здоровье + экипировка) =================
     private static void target(MatrixStack ms, Minecraft mc, int w, int topY) {
         if (!(mc.crosshairPickEntity instanceof LivingEntity)) return;
         LivingEntity le = (LivingEntity) mc.crosshairPickEntity;
-        int tw = 150, th = 27;
+        List<ItemStack> gear = new ArrayList<>();
+        gear.add(le.getItemBySlot(EquipmentSlotType.HEAD));
+        gear.add(le.getItemBySlot(EquipmentSlotType.CHEST));
+        gear.add(le.getItemBySlot(EquipmentSlotType.LEGS));
+        gear.add(le.getItemBySlot(EquipmentSlotType.FEET));
+        gear.add(le.getMainHandItem());
+        gear.removeIf(ItemStack::isEmpty);
+        int tw = 150, th = 27 + (gear.isEmpty() ? 0 : 24);
         int x = (w - tw) / 2, y = topY;
         float hp = le.getHealth(), max = Math.max(1f, le.getMaxHealth());
         float frac = MathHelper.clamp(hp / max, 0f, 1f);
         panel(ms, x, y, tw, th);
+        mark(EL_TARGET, x, y, tw, th);
         text(ms, mc.font, le.getDisplayName().getString(), x + 9, y + 5, WHITE);
         textRight(ms, mc.font, String.format(Locale.ROOT, "%.1f / %.0f", hp, max), x + tw - 7, y + 5, LABEL);
         int bx = x + 9, bw = tw - 18;
         int color = frac > 0.5f ? lerp(YELLOW, GREEN, (frac - 0.5f) * 2f) : lerp(RED, YELLOW, frac * 2f);
         rr(ms, bx, y + 17, bw, 5, 2, 0x50FFFFFF);
         rr(ms, bx, y + 17, Math.max(3, (int) (bw * frac)), 5, 2, color);
+        int gx = x + 9;
+        for (ItemStack st : gear) {
+            mc.getItemRenderer().renderGuiItem(st, gx, y + 27);
+            if (st.isDamageableItem()) {
+                float fr = (st.getMaxDamage() - st.getDamageValue()) / (float) st.getMaxDamage();
+                int col = fr > 0.5f ? lerp(YELLOW, GREEN, (fr - 0.5f) * 2f) : lerp(RED, YELLOW, fr * 2f);
+                rr(ms, gx, y + 44, 16, 3, 1, 0x50FFFFFF);
+                rr(ms, gx, y + 44, Math.max(2, (int) (16 * fr)), 3, 1, col);
+            }
+            gx += 22;
+        }
     }
 
     // ================= Прицел и хит-маркер =================
@@ -411,10 +482,70 @@ public class Hud {
     }
 
 
+    // ================= Управление позициями элементов =================
+    private static void beginEl(int id) {
+        RenderSystem.pushMatrix();
+        RenderSystem.translatef((float) Config.offX[id], (float) Config.offY[id], 0f);
+    }
+
+    private static void endEl() {
+        RenderSystem.popMatrix();
+    }
+
+    private static void mark(int id, int x, int y, int w, int h) {
+        BOUNDS[id][0] = x + Config.offX[id];
+        BOUNDS[id][1] = y + Config.offY[id];
+        BOUNDS[id][2] = w;
+        BOUNDS[id][3] = h;
+        SEEN[id] = System.currentTimeMillis();
+    }
+
+    /** Границы элемента (в координатах масштабированного HUD), либо null, если он сейчас не нарисован. */
+    static int[] bounds(int id) {
+        if (System.currentTimeMillis() - SEEN[id] > 600L) return null;
+        return BOUNDS[id];
+    }
+
+    // ================= GPS-метка =================
+    private static int gps(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int x, int y) {
+        int gx, gz;
+        try {
+            gx = Integer.parseInt(Config.gpsX.trim());
+            gz = Integer.parseInt(Config.gpsZ.trim());
+        } catch (Exception e) {
+            return y;
+        }
+        double dx = gx + 0.5 - p.getX(), dz = gz + 0.5 - p.getZ();
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        float bearing = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float rel = MathHelper.wrapDegrees(bearing - p.yRot);
+        int w = IW, h = 30;
+        panel(ms, x, y, w, h);
+        mark(EL_GPS, x, y, w, h);
+        int cx0 = x + 22, cy0 = y + h / 2;
+        for (int a = 0; a < 360; a += 20) {
+            int px = cx0 + (int) Math.round(Math.cos(Math.toRadians(a)) * 10);
+            int py = cy0 + (int) Math.round(Math.sin(Math.toRadians(a)) * 10);
+            AbstractGui.fill(ms, px, py, px + 1, py + 1, 0x55FFFFFF);
+        }
+        double rad = Math.toRadians(rel);
+        float vx = (float) Math.sin(rad), vy = (float) -Math.cos(rad);
+        for (int i = 0; i <= 8; i++) {
+            int px = cx0 + Math.round(vx * i), py = cy0 + Math.round(vy * i);
+            AbstractGui.fill(ms, px, py, px + 2, py + 2, i >= 6 ? Config.c2() : WHITE);
+        }
+        boolean arrived = dist < 3.0;
+        text(ms, mc.font, "GPS", x + 42, y + 6, LABEL);
+        text(ms, mc.font, arrived ? "Прибыли!" : Math.round(dist) + " бл", x + 42, y + 17, arrived ? GREEN : WHITE);
+        textRight(ms, mc.font, gx + " " + gz, x + w - 7, y + 6, LABEL);
+        return y + h + 4;
+    }
+
     // ================= Компас =================
     private static void compass(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int w) {
         int cw = 170, ch = 18;
         int x = (w - cw) / 2, y = 6;
+        mark(EL_COMPASS, x, y, cw, ch);
         panel(ms, x, y, cw, ch);
         float yaw = MathHelper.wrapDegrees(p.yRot);
         String[] names = {"Ю", "ЮЗ", "З", "СЗ", "С", "СВ", "В", "ЮВ"};
@@ -442,6 +573,7 @@ public class Hud {
     private static int fpsGraph(MatrixStack ms, Minecraft mc, int x, int y) {
         int w = IW, h = 38;
         panel(ms, x, y, w, h);
+        mark(EL_GRAPH, x, y, w, h);
         text(ms, mc.font, "График FPS", x + 9, y + 4, LABEL);
         int max = 60;
         for (int v : HIST) max = Math.max(max, v);
