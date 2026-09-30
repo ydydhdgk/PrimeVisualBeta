@@ -17,7 +17,8 @@ public class Config {
             "Биом", "Игровое время", "Счётчик предметов", "Хит-маркер", "Переливание цвета",
             "Компас", "График FPS", "Предупреждения", "Уведомления биндов",
             "Следы", "Круг прыжка", "GPS-метка", "Авто-команда",
-            "Цветные хитбоксы", "Анимация чата", "Анимация таба", "Анимация окон", "Плавный хотбар"
+            "Цветные хитбоксы", "Анимация чата", "Анимация таба", "Анимация окон", "Плавный хотбар",
+            "Авто-спринт", "Яркость", "Точка смерти", "Время в чате", "Кинокамера при зуме", "Погода", "Голод"
     };
     public static final String[] DESCS = {
             "Кадры в секунду", "Позиция XYZ", "Сторона света и угол", "Блоков в секунду", "Задержка до сервера",
@@ -30,14 +31,17 @@ public class Config {
             "Частицы за вами при движении", "Кольцо частиц при прыжке", "Стрелка и расстояние до точки",
             "Отправка команды по таймеру",
             "Рамки сущностей (скрыты за блоками)", "Плавное появление сообщений",
-            "Плавное открытие списка игроков", "Плавное открытие инвентаря и окон", "Скользящая подсветка слота"
+            "Плавное открытие списка игроков", "Плавное открытие инвентаря и окон", "Скользящая подсветка слота",
+            "Бежать без удержания Ctrl", "Освещение как днём (Fullbright)", "Запомнить место смерти и включить GPS",
+            "[ЧЧ:ММ] перед сообщениями", "Плавный поворот камеры при зуме", "Ясно, дождь или гроза", "Сытость персонажа"
     };
     public static final int FPS = 0, COORDS = 1, DIR = 2, SPEED = 3, PING = 4, LIGHT = 5,
             TIME = 6, EFFECTS = 7, DURABILITY = 8, KEYS = 9, CROSSHAIR = 10, TARGET = 11, WATERMARK = 12,
             BIOME = 13, GAMETIME = 14, ITEMS = 15, HITMARKER = 16, ANIMATE = 17,
             COMPASS = 18, FPSGRAPH = 19, WARN = 20, NOTIFY = 21,
             TRAILS = 22, JUMPCIRCLE = 23, GPS = 24, AUTOCMD = 25,
-            HITBOX = 26, ANIM_CHAT = 27, ANIM_TAB = 28, ANIM_GUI = 29, ANIM_HOTBAR = 30;
+            HITBOX = 26, ANIM_CHAT = 27, ANIM_TAB = 28, ANIM_GUI = 29, ANIM_HOTBAR = 30,
+            SPRINT = 31, BRIGHT = 32, DEATHPOINT = 33, CHATTIME = 34, CINEZOOM = 35, WEATHER = 36, HUNGER = 37;
 
     public static final boolean[] ON = new boolean[NAMES.length];
 
@@ -71,6 +75,7 @@ public class Config {
     public static int hbColor = 0;
     public static int hbRange = 24;
     public static float animSpeed = 1f;
+    public static float brightness = 10f;
     public static int particleType = 0;
     public static float circleSize = 1.5f;
     public static String gpsX = "", gpsZ = "";
@@ -137,6 +142,14 @@ public class Config {
         ON[AUTOCMD] = false;
         ON[HITBOX] = false;
         ON[ANIM_HOTBAR] = false;
+        ON[SPRINT] = false;
+        ON[BRIGHT] = false;
+        ON[DEATHPOINT] = false;
+        ON[CHATTIME] = false;
+        ON[CINEZOOM] = false;
+        ON[WEATHER] = false;
+        ON[HUNGER] = false;
+        brightness = 10f;
         hbPlayers = true;
         hbMobs = true;
         hbItems = false;
@@ -176,20 +189,21 @@ public class Config {
             preset = clampInt(Integer.parseInt(p.getProperty("preset", "0")), 0, PRESET_COUNT - 1);
             hue = Math.max(0f, Math.min(1f, Float.parseFloat(p.getProperty("hue", "0.75"))));
             crosshairStyle = clampInt(Integer.parseInt(p.getProperty("style", "0")), 0, 3);
-            crosshairColor = clampInt(Integer.parseInt(p.getProperty("chcolor", "0")), 0, 4);
+            crosshairColor = clampInt(Integer.parseInt(p.getProperty("chcolor", "0")), 0, 5);
             crosshairSize = clampInt(Integer.parseInt(p.getProperty("chsize", "5")), 3, 9);
             scale = Math.max(0.7f, Math.min(1.5f, Float.parseFloat(p.getProperty("scale", "1"))));
             opacity = Math.max(0.3f, Math.min(1f, Float.parseFloat(p.getProperty("opacity", "0.72"))));
             radius = clampInt(Integer.parseInt(p.getProperty("radius", "4")), 0, 8);
             infoRight = Boolean.parseBoolean(p.getProperty("inforight", "false"));
             glass = Boolean.parseBoolean(p.getProperty("glass", "true"));
-            particleType = clampInt(Integer.parseInt(p.getProperty("ptype", "0")), 0, 5);
+            particleType = clampInt(Integer.parseInt(p.getProperty("ptype", "0")), 0, 6);
             hbPlayers = Boolean.parseBoolean(p.getProperty("hbp", "true"));
             hbMobs = Boolean.parseBoolean(p.getProperty("hbm", "true"));
             hbItems = Boolean.parseBoolean(p.getProperty("hbi", "false"));
-            hbColor = clampInt(Integer.parseInt(p.getProperty("hbc", "0")), 0, 7);
+            hbColor = clampInt(Integer.parseInt(p.getProperty("hbc", "0")), 0, 8);
             hbRange = clampInt(Integer.parseInt(p.getProperty("hbr", "24")), 8, 64);
             animSpeed = Math.max(0.5f, Math.min(2f, Float.parseFloat(p.getProperty("animspeed", "1"))));
+            brightness = Math.max(1f, Math.min(15f, Float.parseFloat(p.getProperty("bright", "10"))));
             circleSize = Math.max(0.5f, Math.min(2.5f, Float.parseFloat(p.getProperty("circle", "1.5"))));
             gpsX = p.getProperty("gpsx", "");
             gpsZ = p.getProperty("gpsz", "");
@@ -230,6 +244,7 @@ public class Config {
             p.setProperty("hbc", String.valueOf(hbColor));
             p.setProperty("hbr", String.valueOf(hbRange));
             p.setProperty("animspeed", String.valueOf(animSpeed));
+            p.setProperty("bright", String.valueOf(brightness));
             p.setProperty("circle", String.valueOf(circleSize));
             p.setProperty("gpsx", gpsX);
             p.setProperty("gpsz", gpsZ);

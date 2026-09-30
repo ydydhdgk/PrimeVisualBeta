@@ -20,6 +20,11 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
 import net.minecraft.particles.IParticleData;
 import net.minecraft.particles.ParticleTypes;
+import net.minecraft.particles.RedstoneParticleData;
+import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.util.text.TextFormatting;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.client.util.InputMappings;
@@ -42,6 +47,10 @@ public class ClientEvents {
     private static long lastBind = 0L;
     private static long lastAuto = 0L;
     private static boolean wasOnGround = true;
+    private static double savedGamma = -1.0;
+    private static boolean sprintForced = false, cineState = false, deathHandled = false;
+    private static double lastX, lastY, lastZ;
+    private static final DateTimeFormatter CHAT_TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static float zoomCurrent = 1f; // плавное значение FOV-множителя
     private static final ArrayDeque<Long> LEFT = new ArrayDeque<>();
     private static final ArrayDeque<Long> RIGHT = new ArrayDeque<>();
@@ -73,7 +82,71 @@ public class ClientEvents {
             case 3: return ParticleTypes.HAPPY_VILLAGER;
             case 4: return ParticleTypes.NOTE;
             case 5: return ParticleTypes.CRIT;
+            case 6: {
+                int c = Hud.rainbow(0f);
+                return new RedstoneParticleData(((c >> 16) & 255) / 255f, ((c >> 8) & 255) / 255f,
+                        (c & 255) / 255f, 1.0f);
+            }
             default: return ParticleTypes.END_ROD;
+        }
+    }
+
+    private void restoreOptions(Minecraft mc) {
+        if (savedGamma >= 0.0) {
+            mc.options.gamma = savedGamma;
+            savedGamma = -1.0;
+        }
+        if (cineState) {
+            mc.options.smoothCamera = false;
+            cineState = false;
+        }
+        if (sprintForced) {
+            mc.options.keySprint.setDown(false);
+            sprintForced = false;
+        }
+    }
+
+    /** Помощники: авто-спринт, яркость, кинокамера при зуме, точка смерти. */
+    private void assist(Minecraft mc, ClientPlayerEntity p) {
+        if (Config.ON[Config.SPRINT]) {
+            if (mc.screen == null && mc.options.keyUp.isDown() && !p.isCrouching()) {
+                mc.options.keySprint.setDown(true);
+                sprintForced = true;
+            }
+        } else if (sprintForced) {
+            mc.options.keySprint.setDown(false);
+            sprintForced = false;
+        }
+
+        if (Config.ON[Config.BRIGHT]) {
+            if (savedGamma < 0.0) savedGamma = mc.options.gamma;
+            mc.options.gamma = Config.brightness;
+        } else if (savedGamma >= 0.0) {
+            mc.options.gamma = savedGamma;
+            savedGamma = -1.0;
+        }
+
+        boolean zoomNow = Config.ON[Config.CINEZOOM] && ZOOM.isDown();
+        if (zoomNow != cineState) {
+            mc.options.smoothCamera = zoomNow;
+            cineState = zoomNow;
+        }
+
+        if (p.getHealth() > 0f) {
+            lastX = p.getX();
+            lastY = p.getY();
+            lastZ = p.getZ();
+            deathHandled = false;
+        } else if (!deathHandled) {
+            deathHandled = true;
+            if (Config.ON[Config.DEATHPOINT]) {
+                int dx = (int) Math.floor(lastX), dy = (int) Math.floor(lastY), dz = (int) Math.floor(lastZ);
+                Config.gpsX = String.valueOf(dx);
+                Config.gpsZ = String.valueOf(dz);
+                Config.ON[Config.GPS] = true;
+                mc.gui.getChat().addMessage(new StringTextComponent("Вы погибли: " + dx + " " + dy + " " + dz));
+                Hud.toast("Точка смерти: " + dx + " " + dy + " " + dz, Hud.RED);
+            }
         }
     }
 
@@ -82,8 +155,10 @@ public class ClientEvents {
         ClientPlayerEntity p = mc.player;
         if (p == null || mc.level == null) {
             wasOnGround = true;
+            restoreOptions(mc);
             return;
         }
+        assist(mc, p);
         boolean onGround = p.isOnGround();
         Vector3d v = p.getDeltaMovement();
         if (!mc.isPaused()) {
@@ -208,6 +283,10 @@ public class ClientEvents {
     @SubscribeEvent
     public void onChatReceived(ClientChatReceivedEvent e) {
         chatAnim = System.currentTimeMillis();
+        if (Config.ON[Config.CHATTIME]) {
+            e.setMessage(new StringTextComponent("[" + LocalTime.now().format(CHAT_TIME) + "] ")
+                    .withStyle(TextFormatting.GRAY).append(e.getMessage()));
+        }
     }
 
     /** Плавный сдвиг чата: при новом сообщении блок «выезжает» снизу. */

@@ -47,6 +47,12 @@ public class Hud {
     private static final long[] SEEN = new long[EL_COUNT];
 
     static long hitTime = 0L;
+    private static float gpsShown = 0f;
+    private static float shownGap = 3f;
+    private static final float[] DURA_SHOWN = new float[6];
+    private static LivingEntity lastTarget;
+    private static float targetAnim = 0f;
+    private static float shownHp = 0f;
     private static String toastText = "";
     private static int toastColor = 0xFFFFFFFF;
     private static long toastTime = 0L;
@@ -74,8 +80,14 @@ public class Hud {
         return (a << 24) | 0x101018;
     }
 
+    /** Переливающийся радужный цвет. off - сдвиг по спектру (0..1). */
+    static int rainbow(float off) {
+        return Config.hsb(((System.currentTimeMillis() % 4000L) / 4000f + off) % 1f, 0.75f, 1f);
+    }
+
     static int crosshairColor(int idx) {
         switch (idx) {
+            case 5: return rainbow(0f);
             case 1: return Config.c1();
             case 2: return GREEN;
             case 3: return YELLOW;
@@ -87,6 +99,7 @@ public class Hud {
     /** Цвета рамок хитбоксов: 0 - акцент, дальше готовые. */
     static int hitboxColor(int idx) {
         switch (idx) {
+            case 8: return rainbow(0.3f);
             case 1: return 0xFFFFFFFF;
             case 2: return 0xFFFF4D4D;
             case 3: return 0xFF55FF7A;
@@ -243,6 +256,15 @@ public class Hud {
             int minutes = (int) ((t % 1000L) * 60L / 1000L);
             rows.add(new Row("Мир. время", String.format(Locale.ROOT, "%02d:%02d", hours, minutes), WHITE));
         }
+        if (Config.ON[Config.WEATHER] && mc.level != null) {
+            boolean thunder = mc.level.isThundering(), rain = mc.level.isRaining();
+            rows.add(new Row("Погода", thunder ? "Гроза" : rain ? "Дождь" : "Ясно",
+                    thunder ? RED : rain ? YELLOW : GREEN));
+        }
+        if (Config.ON[Config.HUNGER]) {
+            int food = p.getFoodData().getFoodLevel();
+            rows.add(new Row("Голод", food + " / 20", food <= 6 ? RED : food <= 12 ? YELLOW : GREEN));
+        }
         if (Config.ON[Config.TIME]) {
             rows.add(new Row("Время", LocalTime.now().format(TIME_FMT), WHITE));
         }
@@ -321,13 +343,17 @@ public class Hud {
         int x = sw - w - 6;
         int y = sh - 6 - items.size() * (h + gap) + gap;
         if (!items.isEmpty()) mark(EL_DURA, x, y, w, items.size() * (h + gap) - gap);
+        int di = 0;
         for (ItemStack st : items) {
+            final int slot = Math.min(di++, DURA_SHOWN.length - 1);
             panel(ms, x, y, w, h);
             mc.getItemRenderer().renderGuiItem(st, x + 7, y + 4);
             if (st.isDamageableItem()) {
                 int max = st.getMaxDamage();
                 int left = max - st.getDamageValue();
-                float frac = left / (float) max;
+                float actual = left / (float) max;
+                DURA_SHOWN[slot] += (actual - DURA_SHOWN[slot]) * 0.2f;
+                float frac = DURA_SHOWN[slot];
                 int color = frac > 0.5f ? lerp(YELLOW, GREEN, (frac - 0.5f) * 2f) : lerp(RED, YELLOW, frac * 2f);
                 text(ms, mc.font, left + " / " + max, x + 28, y + 4, WHITE);
                 int bx = x + 28, bw = w - 36;
@@ -369,7 +395,7 @@ public class Hud {
     private static void keystrokes(MatrixStack ms, Minecraft mc, int sh) {
         GameSettings o = mc.options;
         int s = 22, g = 2;
-        int x = 6, y = sh - 6 - (s * 4 + g * 3);
+        int x = 6, y = sh / 2 - (s * 4 + g * 3);
         mark(EL_KEYS, x, y, s * 3 + g * 2, s * 4 + g * 3);
         key(ms, mc, 0, "W", null, x + s + g, y, s, s, o.keyUp.isDown());
         y += s + g;
@@ -406,10 +432,21 @@ public class Hud {
         }
     }
 
-    // ================= Инфо о цели (здоровье + экипировка) =================
+    // ================= Инфо о цели (плавное появление, здоровье, экипировка) =================
     private static void target(MatrixStack ms, Minecraft mc, int w, int topY) {
-        if (!(mc.crosshairPickEntity instanceof LivingEntity)) return;
-        LivingEntity le = (LivingEntity) mc.crosshairPickEntity;
+        LivingEntity cur = mc.crosshairPickEntity instanceof LivingEntity ? (LivingEntity) mc.crosshairPickEntity : null;
+        if (cur != null) {
+            if (cur != lastTarget) {
+                lastTarget = cur;
+                shownHp = cur.getHealth();
+            }
+            targetAnim += (1f - targetAnim) * 0.25f;
+        } else {
+            targetAnim += (0f - targetAnim) * 0.2f;
+        }
+        if (lastTarget == null || targetAnim < 0.03f) return;
+        LivingEntity le = lastTarget;
+
         List<ItemStack> gear = new ArrayList<>();
         gear.add(le.getItemBySlot(EquipmentSlotType.HEAD));
         gear.add(le.getItemBySlot(EquipmentSlotType.CHEST));
@@ -420,25 +457,33 @@ public class Hud {
         int tw = 150, th = 27 + (gear.isEmpty() ? 0 : 24);
         int x = (w - tw) / 2, y = topY;
         float hp = le.getHealth(), max = Math.max(1f, le.getMaxHealth());
-        float frac = MathHelper.clamp(hp / max, 0f, 1f);
-        panel(ms, x, y, tw, th);
-        mark(EL_TARGET, x, y, tw, th);
-        text(ms, mc.font, le.getDisplayName().getString(), x + 9, y + 5, WHITE);
-        textRight(ms, mc.font, String.format(Locale.ROOT, "%.1f / %.0f", hp, max), x + tw - 7, y + 5, LABEL);
-        int bx = x + 9, bw = tw - 18;
-        int color = frac > 0.5f ? lerp(YELLOW, GREEN, (frac - 0.5f) * 2f) : lerp(RED, YELLOW, frac * 2f);
-        rr(ms, bx, y + 17, bw, 5, 2, 0x50FFFFFF);
-        rr(ms, bx, y + 17, Math.max(3, (int) (bw * frac)), 5, 2, color);
-        int gx = x + 9;
-        for (ItemStack st : gear) {
-            mc.getItemRenderer().renderGuiItem(st, gx, y + 27);
-            if (st.isDamageableItem()) {
-                float fr = (st.getMaxDamage() - st.getDamageValue()) / (float) st.getMaxDamage();
-                int col = fr > 0.5f ? lerp(YELLOW, GREEN, (fr - 0.5f) * 2f) : lerp(RED, YELLOW, fr * 2f);
-                rr(ms, gx, y + 44, 16, 3, 1, 0x50FFFFFF);
-                rr(ms, gx, y + 44, Math.max(2, (int) (16 * fr)), 3, 1, col);
+        shownHp += (hp - shownHp) * 0.15f;
+        float frac = MathHelper.clamp(shownHp / max, 0f, 1f);
+
+        RenderSystem.pushMatrix();
+        RenderSystem.translatef(0f, -(1f - targetAnim) * 24f, 0f);
+        try {
+            panel(ms, x, y, tw, th);
+            mark(EL_TARGET, x, y, tw, th);
+            text(ms, mc.font, le.getDisplayName().getString(), x + 9, y + 5, WHITE);
+            textRight(ms, mc.font, String.format(Locale.ROOT, "%.1f / %.0f", hp, max), x + tw - 7, y + 5, LABEL);
+            int bx = x + 9, bw = tw - 18;
+            int color = frac > 0.5f ? lerp(YELLOW, GREEN, (frac - 0.5f) * 2f) : lerp(RED, YELLOW, frac * 2f);
+            rr(ms, bx, y + 17, bw, 5, 2, 0x50FFFFFF);
+            rr(ms, bx, y + 17, Math.max(3, (int) (bw * frac)), 5, 2, color);
+            int gx = x + 9;
+            for (ItemStack st : gear) {
+                mc.getItemRenderer().renderGuiItem(st, gx, y + 27);
+                if (st.isDamageableItem()) {
+                    float fr = (st.getMaxDamage() - st.getDamageValue()) / (float) st.getMaxDamage();
+                    int col = fr > 0.5f ? lerp(YELLOW, GREEN, (fr - 0.5f) * 2f) : lerp(RED, YELLOW, fr * 2f);
+                    rr(ms, gx, y + 44, 16, 3, 1, 0x50FFFFFF);
+                    rr(ms, gx, y + 44, Math.max(2, (int) (16 * fr)), 3, 1, col);
+                }
+                gx += 22;
             }
-            gx += 22;
+        } finally {
+            RenderSystem.popMatrix();
         }
     }
 
@@ -446,7 +491,8 @@ public class Hud {
     private static void crosshair(MatrixStack ms, Minecraft mc, ClientPlayerEntity p, int w, int h) {
         int cx = w / 2, cy = h / 2;
         float charge = p.getAttackStrengthScale(0f);
-        int gap = 3 + Math.round((1f - charge) * 4f);
+        shownGap += ((3f + (1f - charge) * 4f) - shownGap) * 0.35f;
+        int gap = Math.round(shownGap);
         int c = mc.crosshairPickEntity != null ? RED : crosshairColor(Config.crosshairColor);
         crosshairShape(ms, cx, cy, gap, Config.crosshairSize, Config.crosshairStyle, c);
         if (charge < 1f) {
@@ -542,7 +588,9 @@ public class Hud {
             int py = cy0 + (int) Math.round(Math.sin(Math.toRadians(a)) * 10);
             AbstractGui.fill(ms, px, py, px + 1, py + 1, 0x55FFFFFF);
         }
-        double rad = Math.toRadians(rel);
+        float dr = MathHelper.wrapDegrees(rel - gpsShown);
+        gpsShown = MathHelper.wrapDegrees(gpsShown + dr * 0.2f);
+        double rad = Math.toRadians(gpsShown);
         float vx = (float) Math.sin(rad), vy = (float) -Math.cos(rad);
         for (int i = 0; i <= 8; i++) {
             int px = cx0 + Math.round(vx * i), py = cy0 + Math.round(vy * i);
