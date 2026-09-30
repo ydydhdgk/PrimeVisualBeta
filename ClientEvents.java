@@ -1,6 +1,22 @@
 package com.example.visuals;
 
+import com.mojang.blaze3d.matrix.MatrixStack;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.IVertexBuilder;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.renderer.IRenderTypeBuffer;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.item.ItemEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.client.event.GuiScreenEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
 import net.minecraft.particles.IParticleData;
 import net.minecraft.particles.ParticleTypes;
@@ -150,17 +166,152 @@ public class ClientEvents {
         if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) RIGHT.addLast(now);
     }
 
-    /** Прячем ванильный прицел, если включён свой. */
+    // ======================= Анимации =======================
+    private static long chatAnim = 0L;
+    private static long tabStart = 0L, tabLastSeen = 0L;
+    private static boolean tabPushed = false;
+    private static Screen animScreen;
+    private static long animStart = 0L;
+    private static boolean guiPushed = false;
+    private static float hotbarPos = 0f;
+
+    private static float ease(float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        return 1f - (1f - t) * (1f - t) * (1f - t);
+    }
+
+    private static float dur(float baseMs) {
+        return baseMs / Math.max(0.3f, Config.animSpeed);
+    }
+
+    /** Прячем ванильный прицел, если включён свой; плавный въезд списка игроков (Tab). */
     @SubscribeEvent
     public void onOverlayPre(RenderGameOverlayEvent.Pre e) {
-        if (e.getType() == RenderGameOverlayEvent.ElementType.CROSSHAIRS && Config.ON[Config.CROSSHAIR]) {
+        RenderGameOverlayEvent.ElementType type = e.getType();
+        if (type == RenderGameOverlayEvent.ElementType.CROSSHAIRS && Config.ON[Config.CROSSHAIR]) {
             e.setCanceled(true);
+            return;
+        }
+        if (type == RenderGameOverlayEvent.ElementType.PLAYER_LIST && Config.ON[Config.ANIM_TAB] && !e.isCanceled()) {
+            long now = System.currentTimeMillis();
+            if (now - tabLastSeen > 150L) tabStart = now; // список только что открыли
+            tabLastSeen = now;
+            float k = ease((now - tabStart) / dur(200f));
+            if (k < 1f) {
+                e.getMatrixStack().pushPose();
+                e.getMatrixStack().translate(0.0, -(1f - k) * 16f, 0.0);
+                tabPushed = true;
+            }
         }
     }
 
     @SubscribeEvent
+    public void onChatReceived(ClientChatReceivedEvent e) {
+        chatAnim = System.currentTimeMillis();
+    }
+
+    /** Плавный сдвиг чата: при новом сообщении блок «выезжает» снизу. */
+    @SubscribeEvent
+    public void onChatPos(RenderGameOverlayEvent.Chat e) {
+        if (!Config.ON[Config.ANIM_CHAT]) return;
+        float k = ease((System.currentTimeMillis() - chatAnim) / dur(180f));
+        if (k < 1f) e.setPosY(e.getPosY() + Math.round(9f * (1f - k)));
+    }
+
+    @SubscribeEvent
     public void onOverlayPost(RenderGameOverlayEvent.Post e) {
-        if (e.getType() != RenderGameOverlayEvent.ElementType.ALL) return;
+        RenderGameOverlayEvent.ElementType type = e.getType();
+        if (type == RenderGameOverlayEvent.ElementType.PLAYER_LIST && tabPushed) {
+            e.getMatrixStack().popPose();
+            tabPushed = false;
+            return;
+        }
+        if (type == RenderGameOverlayEvent.ElementType.HOTBAR && Config.ON[Config.ANIM_HOTBAR]) {
+            hotbarGlide(e);
+            return;
+        }
+        if (type != RenderGameOverlayEvent.ElementType.ALL) return;
+        if (tabPushed) { // страховка, если Post списка игроков не пришёл
+            e.getMatrixStack().popPose();
+            tabPushed = false;
+        }
         Hud.render(e.getMatrixStack(), e.getWindow().getGuiScaledWidth(), e.getWindow().getGuiScaledHeight());
+    }
+
+    /** Скользящая подсветка выбранного слота хотбара. */
+    private void hotbarGlide(RenderGameOverlayEvent.Post e) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        float target = mc.player.inventory.selected;
+        hotbarPos += (target - hotbarPos) * Math.min(1f, 0.3f * Config.animSpeed);
+        int w = e.getWindow().getGuiScaledWidth(), h = e.getWindow().getGuiScaledHeight();
+        int x = w / 2 - 91 - 1 + Math.round(hotbarPos * 20f);
+        int y = h - 22 - 1;
+        MatrixStack ms = e.getMatrixStack();
+        Hud.rr(ms, x + 1, y + 1, 22, 22, 3, (Hud.lerp(Config.c1(), Config.c2(), 0.5f) & 0x00FFFFFF) | 0x38000000);
+        Hud.rrOutline(ms, x, y, 24, 24, 4, Config.c2());
+    }
+
+    /** Плавное открытие окон (инвентарь, меню паузы и т.д.). */
+    @SubscribeEvent
+    public void onScreenPre(GuiScreenEvent.DrawScreenEvent.Pre e) {
+        if (!Config.ON[Config.ANIM_GUI]) return;
+        Screen sc = e.getGui();
+        if (sc instanceof MenuScreen || sc instanceof HudEditorScreen || sc instanceof ChatScreen) return;
+        long now = System.currentTimeMillis();
+        if (sc != animScreen) {
+            animScreen = sc;
+            animStart = now;
+        }
+        float k = ease((now - animStart) / dur(170f));
+        if (k >= 1f) return;
+        float s = 0.95f + 0.05f * k;
+        float cx = sc.width / 2f, cy = sc.height / 2f;
+        RenderSystem.pushMatrix();
+        RenderSystem.translatef(cx, cy, 0f);
+        RenderSystem.scalef(s, s, 1f);
+        RenderSystem.translatef(-cx, -cy, 0f);
+        guiPushed = true;
+    }
+
+    @SubscribeEvent
+    public void onScreenPost(GuiScreenEvent.DrawScreenEvent.Post e) {
+        if (guiPushed) {
+            RenderSystem.popMatrix();
+            guiPushed = false;
+        }
+    }
+
+    // ======================= Цветные хитбоксы =======================
+    /** Рамки вокруг сущностей. Рисуются с проверкой глубины, поэтому за блоками не видны. */
+    @SubscribeEvent
+    public void onWorldLast(RenderWorldLastEvent e) {
+        if (!Config.ON[Config.HITBOX]) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) return;
+        MatrixStack ms = e.getMatrixStack();
+        float pt = e.getPartialTicks();
+        Vector3d cam = mc.gameRenderer.getMainCamera().getPosition();
+        IRenderTypeBuffer.Impl buf = mc.renderBuffers().bufferSource();
+        IVertexBuilder vb = buf.getBuffer(RenderType.lines());
+        int col = Hud.hitboxColor(Config.hbColor);
+        float r = ((col >> 16) & 255) / 255f, g = ((col >> 8) & 255) / 255f, b = (col & 255) / 255f;
+        double range2 = (double) Config.hbRange * Config.hbRange;
+        boolean first = mc.options.getCameraType().isFirstPerson();
+        for (Entity en : mc.level.entitiesForRendering()) {
+            if (en == mc.player && first) continue;
+            boolean player = en instanceof PlayerEntity;
+            boolean item = en instanceof ItemEntity;
+            boolean mob = en instanceof LivingEntity && !player;
+            if (!((player && Config.hbPlayers) || (mob && Config.hbMobs) || (item && Config.hbItems))) continue;
+            if (en.distanceToSqr(mc.player) > range2) continue;
+            double ix = MathHelper.lerp(pt, en.xo, en.getX());
+            double iy = MathHelper.lerp(pt, en.yo, en.getY());
+            double iz = MathHelper.lerp(pt, en.zo, en.getZ());
+            AxisAlignedBB bb = en.getBoundingBox().move(ix - en.getX() - cam.x, iy - en.getY() - cam.y,
+                    iz - en.getZ() - cam.z);
+            WorldRenderer.renderLineBox(ms, vb, bb, r, g, b, 1.0f);
+        }
+        buf.endBatch(RenderType.lines());
     }
 }

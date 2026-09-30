@@ -84,6 +84,20 @@ public class Hud {
         }
     }
 
+    /** Цвета рамок хитбоксов: 0 - акцент, дальше готовые. */
+    static int hitboxColor(int idx) {
+        switch (idx) {
+            case 1: return 0xFFFFFFFF;
+            case 2: return 0xFFFF4D4D;
+            case 3: return 0xFF55FF7A;
+            case 4: return 0xFFFFD84A;
+            case 5: return 0xFF2DD4FF;
+            case 6: return 0xFFFF7AD9;
+            case 7: return 0xFFFF9F43;
+            default: return Config.c1();
+        }
+    }
+
     public static void render(MatrixStack ms, int sw, int sh) {
         Minecraft mc = Minecraft.getInstance();
         ClientPlayerEntity p = mc.player;

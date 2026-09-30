@@ -18,14 +18,14 @@ import java.util.Locale;
 
 public class MenuScreen extends Screen {
     private static final int W = 400, H = 256, SIDE = 100, CW = 276;
-    private static final int TAB_STEP = 19, TAB_H = 17;
-    private static final String[] TABS = {"Инфо", "Мир", "Интерфейс", "Прицел", "Эффекты",
-            "Утилиты", "Бинды", "Цвета", "Панели", "Настройки"};
+    private static final int TAB_STEP = 16, TAB_H = 15;
+    private static final String[] TABS = {"Инфо", "Мир", "Интерфейс", "Прицел", "Эффекты", "Хитбоксы",
+            "Анимации", "Утилиты", "Бинды", "Цвета", "Панели", "Настройки"};
     private static final int[][] TAB_MODULES = {
             {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME},
             {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.COMPASS, Config.WARN},
             {Config.EFFECTS, Config.DURABILITY, Config.KEYS, Config.TARGET, Config.WATERMARK, Config.ITEMS, Config.HITMARKER},
-            {}, {}, {}, {}, {}, {}, {}
+            {}, {}, {}, {}, {}, {}, {}, {}, {}
     };
     private static final String[] STYLES = {"Крест", "Точка", "Круг", "Т-образный"};
     private static final String[] PARTICLES = {"Звёзды", "Огонь", "Сердца", "Искры", "Ноты", "Крит"};
@@ -185,7 +185,7 @@ public class MenuScreen extends Screen {
         Hud.rr(ms, px + 8, ty0 + Math.round(tabInd) + 3, 2, TAB_H - 6, 1, Hud.lerp(c1, c2, 0.5f));
         for (int k = 0; k < TABS.length; k++) {
             boolean sel = k == tab;
-            font.drawShadow(ms, TABS[k], px + 20, ty0 + k * TAB_STEP + 5, sel ? Hud.WHITE : 0xFF8C90A8);
+            font.drawShadow(ms, TABS[k], px + 20, ty0 + k * TAB_STEP + 4, sel ? Hud.WHITE : 0xFF8C90A8);
             hits.add(new Hit(px + 8, ty0 + k * TAB_STEP, SIDE - 16, TAB_H, 200 + k));
         }
         font.draw(ms, "by whiteshapka", px + 14, py + H - 14, 0xFF4D5066);
@@ -238,10 +238,12 @@ public class MenuScreen extends Screen {
                         break;
                     case 3: drawCrosshairTab(ms, cx, y, mx, my); break;
                     case 4: drawEffectsTab(ms, cx, y, mx, my); break;
-                    case 5: drawUtilsTab(ms, cx, y, mx, my); break;
-                    case 6: drawBindsTab(ms, cx, y, mx, my); break;
-                    case 7: drawColorsTab(ms, cx, y, mx, my); break;
-                    case 8: drawPanelsTab(ms, cx, y, mx, my); break;
+                    case 5: drawHitboxTab(ms, cx, y, mx, my); break;
+                    case 6: drawAnimTab(ms, cx, y, mx, my); break;
+                    case 7: drawUtilsTab(ms, cx, y, mx, my); break;
+                    case 8: drawBindsTab(ms, cx, y, mx, my); break;
+                    case 9: drawColorsTab(ms, cx, y, mx, my); break;
+                    case 10: drawPanelsTab(ms, cx, y, mx, my); break;
                     default: drawSettingsTab(ms, cx, y, mx, my); break;
                 }
             }
@@ -317,6 +319,47 @@ public class MenuScreen extends Screen {
         y = sliderBlock(ms, cx, y, "Размер круга прыжка", String.format(Locale.ROOT, "%.1f бл", Config.circleSize),
                 106, (Config.circleSize - 0.5f) / 2f);
         label(ms, "Частицы видны только вам (клиентская сторона)", cx, y);
+    }
+
+    // ---- вкладка «Хитбоксы» ----
+    private void drawHitboxTab(MatrixStack ms, int cx, int y, int mx, int my) {
+        y = moduleCard(ms, Config.HITBOX, cx, y, mx, my);
+        label(ms, "Показывать для", cx, y + 1);
+        y += 12;
+        String[] names = {"Игроки", "Мобы", "Предметы"};
+        boolean[] on = {Config.hbPlayers, Config.hbMobs, Config.hbItems};
+        int cw = (CW - 8) / 3;
+        for (int k = 0; k < 3; k++) {
+            int x = cx + k * (cw + 4);
+            if (on[k]) Hud.rr(ms, x, y, cw, 20, 5, Hud.lerp(Config.c1(), Config.c2(), 0.5f));
+            else card(ms, x, y, cw, 20, 5, 0xFF171822, 0xFF21222F, in(mx, my, x, y, cw, 20) ? 1f : 0f);
+            font.drawShadow(ms, names[k], x + (cw - font.width(names[k])) / 2f, y + 6, Hud.WHITE);
+            hits.add(new Hit(x, y, cw, 20, 440 + k));
+        }
+        y += 26;
+        label(ms, "Цвет рамок", cx, y + 1);
+        y += 12;
+        int sw = (CW - 7 * 4) / 8;
+        for (int k = 0; k < 8; k++) {
+            int x = cx + k * (sw + 4);
+            if (k == Config.hbColor) Hud.rr(ms, x - 2, y - 2, sw + 4, 22, 6, 0xFFFFFFFF);
+            Hud.rr(ms, x, y, sw, 18, 5, Hud.hitboxColor(k));
+            hits.add(new Hit(x, y, sw, 18, 450 + k));
+        }
+        y += 26;
+        y = sliderBlock(ms, cx, y, "Дальность", Config.hbRange + " бл", 109, (Config.hbRange - 8) / 56f);
+        label(ms, "Рамки скрыты за блоками, как в F3+B", cx, y);
+    }
+
+    // ---- вкладка «Анимации» ----
+    private void drawAnimTab(MatrixStack ms, int cx, int y, int mx, int my) {
+        y = moduleCard(ms, Config.ANIM_CHAT, cx, y, mx, my);
+        y = moduleCard(ms, Config.ANIM_TAB, cx, y, mx, my);
+        y = moduleCard(ms, Config.ANIM_GUI, cx, y, mx, my);
+        y = moduleCard(ms, Config.ANIM_HOTBAR, cx, y, mx, my);
+        y = sliderBlock(ms, cx, y, "Скорость анимаций", String.format(Locale.ROOT, "×%.1f", Config.animSpeed),
+                108, (Config.animSpeed - 0.5f) / 1.5f);
+        label(ms, "Чат, Tab, окна и хотбар двигаются плавно", cx, y);
     }
 
     // ---- вкладка «Утилиты» (GPS и авто-команда) ----
@@ -525,6 +568,8 @@ public class MenuScreen extends Screen {
         else if (id == 105) Config.hue = frac;
         else if (id == 106) Config.circleSize = Math.round((0.5f + frac * 2f) * 10f) / 10f;
         else if (id == 107) Config.autoInterval = 10 + Math.round(frac * 58f) * 5;
+        else if (id == 108) Config.animSpeed = Math.round((0.5f + frac * 1.5f) * 10f) / 10f;
+        else if (id == 109) Config.hbRange = 8 + Math.round(frac * 56f);
     }
 
     @Override
@@ -540,7 +585,7 @@ public class MenuScreen extends Screen {
             if (id < Config.ON.length) {
                 Config.ON[id] = !Config.ON[id];
                 click(Config.ON[id] ? 1.3f : 0.8f);
-            } else if (id >= 100 && id <= 107) {
+            } else if (id >= 100 && id <= 109) {
                 drag = id;
                 setSlider(id, lx);
             } else if (id >= 200 && id < 200 + TABS.length) {
@@ -557,6 +602,14 @@ public class MenuScreen extends Screen {
                 click(1.1f);
             } else if (id >= 430 && id < 436) {
                 Config.particleType = id - 430;
+                click(1.1f);
+            } else if (id >= 440 && id < 443) {
+                if (id == 440) Config.hbPlayers = !Config.hbPlayers;
+                else if (id == 441) Config.hbMobs = !Config.hbMobs;
+                else Config.hbItems = !Config.hbItems;
+                click(1.1f);
+            } else if (id >= 450 && id < 458) {
+                Config.hbColor = id - 450;
                 click(1.1f);
             } else if (id == 500) {
                 Config.reset();
