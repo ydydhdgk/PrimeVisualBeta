@@ -16,6 +16,8 @@ public class VisualsMod {
     }
 
     private void clientSetup(FMLClientSetupEvent e) {
+        Config.load();
         ClientRegistry.registerKeyBinding(ClientEvents.ZOOM);
+        ClientRegistry.registerKeyBinding(ClientEvents.MENU);
     }
 }

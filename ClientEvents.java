@@ -7,6 +7,7 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraftforge.client.event.EntityViewRenderEvent;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.lwjgl.glfw.GLFW;
 
@@ -15,11 +16,14 @@ import java.util.ArrayDeque;
 public class ClientEvents {
     public static final KeyBinding ZOOM = new KeyBinding(
             "key.visuals.zoom", InputMappings.Type.KEYSYM, GLFW.GLFW_KEY_C, "key.categories.visuals");
+    public static final KeyBinding MENU = new KeyBinding(
+            "key.visuals.menu", InputMappings.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "key.categories.visuals");
 
-    private static double zoomTarget = 0.25; // меньше = сильнее приближение
-    private static float zoomCurrent = 1f;   // плавное значение
+    private static float zoomCurrent = 1f; // плавное значение FOV-множителя
     private static final ArrayDeque<Long> LEFT = new ArrayDeque<>();
     private static final ArrayDeque<Long> RIGHT = new ArrayDeque<>();
+
+    public static float zoomFactor() { return zoomCurrent; }
 
     /** Кликов за последнюю секунду. */
     public static int cps(boolean left) {
@@ -30,8 +34,17 @@ public class ClientEvents {
     }
 
     @SubscribeEvent
+    public void onTick(TickEvent.ClientTickEvent e) {
+        if (e.phase != TickEvent.Phase.END) return;
+        Minecraft mc = Minecraft.getInstance();
+        while (MENU.consumeClick()) {
+            if (mc.screen == null && mc.player != null) mc.setScreen(new MenuScreen());
+        }
+    }
+
+    @SubscribeEvent
     public void onFov(EntityViewRenderEvent.FOVModifier e) {
-        float target = ZOOM.isDown() ? (float) zoomTarget : 1f;
+        float target = ZOOM.isDown() ? (float) Config.zoom : 1f;
         zoomCurrent += (target - zoomCurrent) * 0.2f; // плавный вход/выход
         if (Math.abs(zoomCurrent - 1f) > 0.001f) e.setFOV(e.getFOV() * zoomCurrent);
     }
@@ -39,7 +52,7 @@ public class ClientEvents {
     @SubscribeEvent
     public void onScroll(InputEvent.MouseScrollEvent e) {
         if (ZOOM.isDown()) { // колесо при зуме меняет силу приближения
-            zoomTarget = MathHelper.clamp(zoomTarget - e.getScrollDelta() * 0.03, 0.05, 1.0);
+            Config.zoom = MathHelper.clamp(Config.zoom - e.getScrollDelta() * 0.03, 0.05, 0.6);
             e.setCanceled(true);
         }
     }
@@ -52,10 +65,12 @@ public class ClientEvents {
         if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) RIGHT.addLast(now);
     }
 
-    /** Прячем ванильный прицел. */
+    /** Прячем ванильный прицел, если включён свой. */
     @SubscribeEvent
     public void onOverlayPre(RenderGameOverlayEvent.Pre e) {
-        if (e.getType() == RenderGameOverlayEvent.ElementType.CROSSHAIRS) e.setCanceled(true);
+        if (e.getType() == RenderGameOverlayEvent.ElementType.CROSSHAIRS && Config.ON[Config.CROSSHAIR]) {
+            e.setCanceled(true);
+        }
     }
 
     @SubscribeEvent
