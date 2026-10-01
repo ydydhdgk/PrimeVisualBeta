@@ -21,7 +21,9 @@ import net.minecraft.client.entity.player.ClientPlayerEntity;
 import net.minecraft.particles.IParticleData;
 import net.minecraft.particles.ParticleTypes;
 import net.minecraft.particles.RedstoneParticleData;
+import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
+import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraft.util.text.TextFormatting;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -47,6 +49,8 @@ public class ClientEvents {
     private static long lastBind = 0L;
     private static long lastAuto = 0L;
     private static boolean wasOnGround = true;
+    private static String calcAnswer = null;
+    private static long calcTime = 0L;
     private static double savedGamma = -1.0;
     private static boolean sprintForced = false, cineState = false, deathHandled = false;
     private static double lastX, lastY, lastZ;
@@ -163,7 +167,7 @@ public class ClientEvents {
         Vector3d v = p.getDeltaMovement();
         if (!mc.isPaused()) {
             if (Config.ON[Config.TRAILS] && (v.x * v.x + v.z * v.z > 0.0009 || !onGround)) {
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < Config.trailDensity; i++) {
                     mc.level.addParticle(particle(Config.particleType),
                             p.getX() + (Math.random() - 0.5) * 0.4, p.getY() + 0.1 + Math.random() * 0.2,
                             p.getZ() + (Math.random() - 0.5) * 0.4, 0.0, 0.01, 0.0);
@@ -211,17 +215,29 @@ public class ClientEvents {
         }
     }
 
-    /** Бинды: нажатие клавиши отправляет выбранную пользователем команду (с задержкой 0.4 с). */
+    /** Бинды и клавиши мода. Команды отправляются только по нажатию (пауза 0,4 с). */
     @SubscribeEvent
     public void onKey(InputEvent.KeyInputEvent e) {
         if (e.getAction() != GLFW.GLFW_PRESS) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null) return;
+        int key = e.getKey();
         long now = System.currentTimeMillis();
+        if (Config.hudKey >= 0 && key == Config.hudKey) {
+            Config.hudHidden = !Config.hudHidden;
+            Hud.toast(Config.hudHidden ? "HUD мода скрыт" : "HUD мода показан", Hud.WHITE);
+            return;
+        }
+        if (Config.calcKey >= 0 && key == Config.calcKey && calcAnswer != null && now - calcTime < 60000L) {
+            mc.player.chat(calcAnswer);
+            Hud.toast("Отправлено: " + calcAnswer, Hud.GREEN);
+            calcAnswer = null;
+            return;
+        }
         if (now - lastBind < 400L) return;
         for (int i = 0; i < Config.BIND_COUNT; i++) {
             String cmd = Config.bindCmd[i] == null ? "" : Config.bindCmd[i].trim();
-            if (Config.bindKey[i] == e.getKey() && !cmd.isEmpty()) {
+            if (Config.bindKey[i] == key && !cmd.isEmpty()) {
                 mc.player.chat(cmd);
                 lastBind = now;
                 if (Config.ON[Config.NOTIFY]) Hud.toast("Отправлено: " + cmd, Hud.GREEN);
@@ -282,11 +298,23 @@ public class ClientEvents {
 
     @SubscribeEvent
     public void onChatReceived(ClientChatReceivedEvent e) {
-        chatAnim = System.currentTimeMillis();
-        if (Config.ON[Config.CHATTIME]) {
-            e.setMessage(new StringTextComponent("[" + LocalTime.now().format(CHAT_TIME) + "] ")
-                    .withStyle(TextFormatting.GRAY).append(e.getMessage()));
+        long now = System.currentTimeMillis();
+        chatAnim = now;
+        ITextComponent msg = e.getMessage();
+        if (Config.ON[Config.CALC]) {
+            String[] r = Calc.find(msg.getString());
+            if (r != null) {
+                calcAnswer = r[1];
+                calcTime = now;
+                msg = msg.copy().append(new StringTextComponent("  = " + r[1]).withStyle(TextFormatting.GREEN));
+                Hud.toast(r[0] + " = " + r[1], Hud.GREEN);
+            }
         }
+        if (Config.ON[Config.CHATTIME]) {
+            msg = new StringTextComponent("[" + LocalTime.now().format(CHAT_TIME) + "] ")
+                    .withStyle(TextFormatting.GRAY).append(msg);
+        }
+        if (msg != e.getMessage()) e.setMessage(msg);
     }
 
     /** Плавный сдвиг чата: при новом сообщении блок «выезжает» снизу. */
@@ -362,10 +390,36 @@ public class ClientEvents {
     }
 
     // ======================= Цветные хитбоксы =======================
-    /** Рамки вокруг сущностей. Рисуются с проверкой глубины, поэтому за блоками не видны. */
+    private static float[] hbRgb() {
+        int col = Hud.hitboxColor(Config.hbColor);
+        return new float[]{((col >> 16) & 255) / 255f, ((col >> 8) & 255) / 255f, (col & 255) / 255f};
+    }
+
+    /** Игроки и мобы: рамка рисуется в том же проходе, что и сама сущность (как ванильный F3+B). */
+    @SubscribeEvent
+    public void onLivingPost(RenderLivingEvent.Post<?, ?> e) {
+        if (!Config.ON[Config.HITBOX]) return;
+        LivingEntity le = e.getEntity();
+        boolean player = le instanceof PlayerEntity;
+        if (!((player && Config.hbPlayers) || (!player && Config.hbMobs))) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        if (le.distanceToSqr(mc.player) > (double) Config.hbRange * Config.hbRange) return;
+        float[] c = hbRgb();
+        IVertexBuilder vb = e.getBuffers().getBuffer(RenderType.lines());
+        AxisAlignedBB bb = le.getBoundingBox().move(-le.getX(), -le.getY(), -le.getZ());
+        WorldRenderer.renderLineBox(e.getMatrixStack(), vb, bb, c[0], c[1], c[2], 1.0f);
+        if (Config.hbEye) {
+            float eye = le.getEyeHeight();
+            AxisAlignedBB line = new AxisAlignedBB(bb.minX, eye - 0.01, bb.minZ, bb.maxX, eye + 0.01, bb.maxZ);
+            WorldRenderer.renderLineBox(e.getMatrixStack(), vb, line, 1f, 0f, 0f, 1f);
+        }
+    }
+
+    /** Предметы и прочие сущности (стрелы, лодки и т.д.). Рисуются с проверкой глубины, за блоками не видны. */
     @SubscribeEvent
     public void onWorldLast(RenderWorldLastEvent e) {
-        if (!Config.ON[Config.HITBOX]) return;
+        if (!Config.ON[Config.HITBOX] || !(Config.hbItems || Config.hbOthers)) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return;
         MatrixStack ms = e.getMatrixStack();
@@ -373,23 +427,19 @@ public class ClientEvents {
         Vector3d cam = mc.gameRenderer.getMainCamera().getPosition();
         IRenderTypeBuffer.Impl buf = mc.renderBuffers().bufferSource();
         IVertexBuilder vb = buf.getBuffer(RenderType.lines());
-        int col = Hud.hitboxColor(Config.hbColor);
-        float r = ((col >> 16) & 255) / 255f, g = ((col >> 8) & 255) / 255f, b = (col & 255) / 255f;
+        float[] c = hbRgb();
         double range2 = (double) Config.hbRange * Config.hbRange;
-        boolean first = mc.options.getCameraType().isFirstPerson();
         for (Entity en : mc.level.entitiesForRendering()) {
-            if (en == mc.player && first) continue;
-            boolean player = en instanceof PlayerEntity;
+            if (en instanceof LivingEntity) continue;
             boolean item = en instanceof ItemEntity;
-            boolean mob = en instanceof LivingEntity && !player;
-            if (!((player && Config.hbPlayers) || (mob && Config.hbMobs) || (item && Config.hbItems))) continue;
+            if (!((item && Config.hbItems) || (!item && Config.hbOthers))) continue;
             if (en.distanceToSqr(mc.player) > range2) continue;
             double ix = MathHelper.lerp(pt, en.xo, en.getX());
             double iy = MathHelper.lerp(pt, en.yo, en.getY());
             double iz = MathHelper.lerp(pt, en.zo, en.getZ());
             AxisAlignedBB bb = en.getBoundingBox().move(ix - en.getX() - cam.x, iy - en.getY() - cam.y,
                     iz - en.getZ() - cam.z);
-            WorldRenderer.renderLineBox(ms, vb, bb, r, g, b, 1.0f);
+            WorldRenderer.renderLineBox(ms, vb, bb, c[0], c[1], c[2], 1.0f);
         }
         buf.endBatch(RenderType.lines());
     }

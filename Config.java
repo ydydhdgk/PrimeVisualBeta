@@ -5,9 +5,13 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import java.awt.Color;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 
 public class Config {
@@ -18,12 +22,13 @@ public class Config {
             "Компас", "График FPS", "Предупреждения", "Уведомления биндов",
             "Следы", "Круг прыжка", "GPS-метка", "Авто-команда",
             "Цветные хитбоксы", "Анимация чата", "Анимация таба", "Анимация окон", "Плавный хотбар",
-            "Авто-спринт", "Яркость", "Точка смерти", "Время в чате", "Кинокамера при зуме", "Погода", "Голод"
+            "Авто-спринт", "Яркость", "Точка смерти", "Время в чате", "Кинокамера при зуме", "Погода", "Голод",
+            "Калькулятор"
     };
     public static final String[] DESCS = {
             "Кадры в секунду", "Позиция XYZ", "Сторона света и угол", "Блоков в секунду", "Задержка до сервера",
             "Уровень освещения", "Реальное время", "Иконки и таймеры", "Броня и предметы в руках",
-            "WASD, мышь, клики в секунду", "Заменяет ванильный", "Имя и здоровье цели", "Плашка с названием мода",
+            "WASD, мышь, клики в секунду", "Заменяет ванильный", "Имя, здоровье и экипировка цели", "Плашка с названием мода",
             "В каком биоме вы стоите", "Время суток в мире", "Тотемы, яблоки, жемчуг, стрелы",
             "Вспышка при ударе по цели", "Анимация градиента и текста",
             "Полоса направлений сверху", "История кадров за 8 секунд", "Мало здоровья и прочности брони",
@@ -33,7 +38,8 @@ public class Config {
             "Рамки сущностей (скрыты за блоками)", "Плавное появление сообщений",
             "Плавное открытие списка игроков", "Плавное открытие инвентаря и окон", "Скользящая подсветка слота",
             "Бежать без удержания Ctrl", "Освещение как днём (Fullbright)", "Запомнить место смерти и включить GPS",
-            "[ЧЧ:ММ] перед сообщениями", "Плавный поворот камеры при зуме", "Ясно, дождь или гроза", "Сытость персонажа"
+            "[ЧЧ:ММ] перед сообщениями", "Плавный поворот камеры при зуме", "Ясно, дождь или гроза", "Сытость персонажа",
+            "Считает примеры из чата и подсказывает ответ"
     };
     public static final int FPS = 0, COORDS = 1, DIR = 2, SPEED = 3, PING = 4, LIGHT = 5,
             TIME = 6, EFFECTS = 7, DURABILITY = 8, KEYS = 9, CROSSHAIR = 10, TARGET = 11, WATERMARK = 12,
@@ -41,7 +47,8 @@ public class Config {
             COMPASS = 18, FPSGRAPH = 19, WARN = 20, NOTIFY = 21,
             TRAILS = 22, JUMPCIRCLE = 23, GPS = 24, AUTOCMD = 25,
             HITBOX = 26, ANIM_CHAT = 27, ANIM_TAB = 28, ANIM_GUI = 29, ANIM_HOTBAR = 30,
-            SPRINT = 31, BRIGHT = 32, DEATHPOINT = 33, CHATTIME = 34, CINEZOOM = 35, WEATHER = 36, HUNGER = 37;
+            SPRINT = 31, BRIGHT = 32, DEATHPOINT = 33, CHATTIME = 34, CINEZOOM = 35, WEATHER = 36, HUNGER = 37,
+            CALC = 38;
 
     public static final boolean[] ON = new boolean[NAMES.length];
 
@@ -57,34 +64,47 @@ public class Config {
     public static final int PRESET_COUNT = 8;
 
     // ---- бинды: клавиша -> команда ----
-    public static final int BIND_COUNT = 5;
+    public static final int BIND_COUNT = 8;
     public static final int[] bindKey = new int[BIND_COUNT];
     public static final String[] bindCmd = new String[BIND_COUNT];
+    public static int calcKey = -1;  // клавиша «отправить ответ калькулятора»
+    public static int hudKey = -1;   // клавиша «скрыть/показать HUD мода»
+    public static boolean hudHidden = false; // не сохраняется
 
+    public static int lastTab = 0;   // последняя открытая вкладка меню
     public static int preset = 0;
     public static float hue = 0.75f;
     public static int crosshairStyle = 0;
     public static int crosshairColor = 0;
     public static int crosshairSize = 5;
+    public static int crosshairThick = 1;
+    public static boolean crosshairOutline = true;
     public static float scale = 1f;
     public static float opacity = 0.72f;
     public static int radius = 4;
     public static boolean infoRight = false;
-    public static boolean glass = true; // стиль Liquid Glass (по умолчанию включён)
-    public static boolean hbPlayers = true, hbMobs = true, hbItems = false;
+    public static boolean glass = true;
+    public static boolean textShadow = true;
+    public static boolean sounds = true;
+    public static boolean keysMouse = true, keysSpace = true;
+    public static int keysSize = 22;
+    public static String wmText = "PrimeVisual";
+    public static boolean wmFps = true, wmTime = true;
+    public static boolean hbPlayers = true, hbMobs = true, hbItems = false, hbOthers = false, hbEye = false;
     public static int hbColor = 0;
-    public static int hbRange = 24;
+    public static int hbRange = 64;
     public static float animSpeed = 1f;
     public static float brightness = 10f;
     public static int particleType = 0;
+    public static int trailDensity = 2;
     public static float circleSize = 1.5f;
     public static String gpsX = "", gpsZ = "";
     public static String autoCmd = "";
-    public static int autoInterval = 60; // секунд, минимум 10
+    public static int autoInterval = 60;
+    public static double zoom = 0.25;
     // смещения элементов HUD (редактор позиций)
     public static final int[] offX = new int[10];
     public static final int[] offY = new int[10];
-    public static double zoom = 0.25;
 
     static {
         Arrays.fill(bindKey, -1);
@@ -124,145 +144,247 @@ public class Config {
         return PRESETS[k][1];
     }
 
-    /** Сброс внешнего вида и модулей (бинды не трогаем). */
+    /** Сброс: все функции выключены, внешний вид по умолчанию (бинды и текстовые поля не трогаем). */
     public static void reset() {
-        Arrays.fill(ON, true);
-        ON[SPEED] = false;
-        ON[PING] = false;
-        ON[LIGHT] = false;
-        ON[TIME] = false;
-        ON[BIOME] = false;
-        ON[GAMETIME] = false;
-        ON[ITEMS] = false;
-        ON[COMPASS] = false;
-        ON[FPSGRAPH] = false;
-        ON[TRAILS] = false;
-        ON[JUMPCIRCLE] = false;
-        ON[GPS] = false;
-        ON[AUTOCMD] = false;
-        ON[HITBOX] = false;
-        ON[ANIM_HOTBAR] = false;
-        ON[SPRINT] = false;
-        ON[BRIGHT] = false;
-        ON[DEATHPOINT] = false;
-        ON[CHATTIME] = false;
-        ON[CINEZOOM] = false;
-        ON[WEATHER] = false;
-        ON[HUNGER] = false;
-        brightness = 10f;
-        hbPlayers = true;
-        hbMobs = true;
-        hbItems = false;
-        hbColor = 0;
-        hbRange = 24;
-        animSpeed = 1f;
+        Arrays.fill(ON, false);
+        ON[ANIMATE] = true; // переливание - часть стиля, а не функция
         Arrays.fill(offX, 0);
         Arrays.fill(offY, 0);
-        particleType = 0;
-        circleSize = 1.5f;
         preset = 0;
         hue = 0.75f;
         crosshairStyle = 0;
         crosshairColor = 0;
         crosshairSize = 5;
+        crosshairThick = 1;
+        crosshairOutline = true;
         scale = 1f;
         opacity = 0.72f;
         radius = 4;
         infoRight = false;
         glass = true;
+        textShadow = true;
+        sounds = true;
+        keysMouse = true;
+        keysSpace = true;
+        keysSize = 22;
+        wmFps = true;
+        wmTime = true;
+        hbPlayers = true;
+        hbMobs = true;
+        hbItems = false;
+        hbOthers = false;
+        hbEye = false;
+        hbColor = 0;
+        hbRange = 64;
+        animSpeed = 1f;
+        brightness = 10f;
+        particleType = 0;
+        trailDensity = 2;
+        circleSize = 1.5f;
         zoom = 0.25;
     }
 
+    // ============================ файлы и конфиг-профили ============================
     private static Path file() {
         return FMLPaths.CONFIGDIR.get().resolve("visuals.properties");
     }
 
-    public static void load() {
+    private static Path profileDir() {
+        return FMLPaths.CONFIGDIR.get().resolve("visuals-configs");
+    }
+
+    public static String sanitize(String n) {
+        StringBuilder sb = new StringBuilder();
+        for (char c : n.toCharArray()) {
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == '_' || c == '-') sb.append(c);
+        }
+        String r = sb.toString().trim();
+        return r.length() > 24 ? r.substring(0, 24).trim() : r;
+    }
+
+    public static List<String> listProfiles() {
+        List<String> out = new ArrayList<>();
         try {
-            Path f = file();
-            if (!Files.exists(f)) return;
-            Properties p = new Properties();
-            try (InputStream in = Files.newInputStream(f)) { p.load(in); }
-            for (int i = 0; i < ON.length; i++) {
-                ON[i] = Boolean.parseBoolean(p.getProperty("m" + i, String.valueOf(ON[i])));
-            }
-            preset = clampInt(Integer.parseInt(p.getProperty("preset", "0")), 0, PRESET_COUNT - 1);
-            hue = Math.max(0f, Math.min(1f, Float.parseFloat(p.getProperty("hue", "0.75"))));
-            crosshairStyle = clampInt(Integer.parseInt(p.getProperty("style", "0")), 0, 3);
-            crosshairColor = clampInt(Integer.parseInt(p.getProperty("chcolor", "0")), 0, 5);
-            crosshairSize = clampInt(Integer.parseInt(p.getProperty("chsize", "5")), 3, 9);
-            scale = Math.max(0.7f, Math.min(1.5f, Float.parseFloat(p.getProperty("scale", "1"))));
-            opacity = Math.max(0.3f, Math.min(1f, Float.parseFloat(p.getProperty("opacity", "0.72"))));
-            radius = clampInt(Integer.parseInt(p.getProperty("radius", "4")), 0, 8);
-            infoRight = Boolean.parseBoolean(p.getProperty("inforight", "false"));
-            glass = Boolean.parseBoolean(p.getProperty("glass", "true"));
-            particleType = clampInt(Integer.parseInt(p.getProperty("ptype", "0")), 0, 6);
-            hbPlayers = Boolean.parseBoolean(p.getProperty("hbp", "true"));
-            hbMobs = Boolean.parseBoolean(p.getProperty("hbm", "true"));
-            hbItems = Boolean.parseBoolean(p.getProperty("hbi", "false"));
-            hbColor = clampInt(Integer.parseInt(p.getProperty("hbc", "0")), 0, 8);
-            hbRange = clampInt(Integer.parseInt(p.getProperty("hbr", "24")), 8, 64);
-            animSpeed = Math.max(0.5f, Math.min(2f, Float.parseFloat(p.getProperty("animspeed", "1"))));
-            brightness = Math.max(1f, Math.min(15f, Float.parseFloat(p.getProperty("bright", "10"))));
-            circleSize = Math.max(0.5f, Math.min(2.5f, Float.parseFloat(p.getProperty("circle", "1.5"))));
-            gpsX = p.getProperty("gpsx", "");
-            gpsZ = p.getProperty("gpsz", "");
-            autoCmd = p.getProperty("autocmd", "");
-            autoInterval = clampInt(Integer.parseInt(p.getProperty("autoint", "60")), 10, 300);
-            for (int i = 0; i < offX.length; i++) {
-                offX[i] = Integer.parseInt(p.getProperty("ox" + i, "0"));
-                offY[i] = Integer.parseInt(p.getProperty("oy" + i, "0"));
-            }
-            zoom = Math.max(0.05, Math.min(0.6, Double.parseDouble(p.getProperty("zoom", "0.25"))));
-            for (int i = 0; i < BIND_COUNT; i++) {
-                bindKey[i] = Integer.parseInt(p.getProperty("bk" + i, "-1"));
-                bindCmd[i] = p.getProperty("bc" + i, "");
+            Path dir = profileDir();
+            if (Files.isDirectory(dir)) {
+                try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "*.properties")) {
+                    for (Path p : ds) {
+                        String n = p.getFileName().toString();
+                        out.add(n.substring(0, n.length() - ".properties".length()));
+                    }
+                }
             }
         } catch (Exception ignored) {
-            reset();
+        }
+        Collections.sort(out, String.CASE_INSENSITIVE_ORDER);
+        return out;
+    }
+
+    public static boolean saveProfile(String name) {
+        String n = sanitize(name);
+        return !n.isEmpty() && writeTo(profileDir().resolve(n + ".properties"));
+    }
+
+    public static boolean loadProfile(String name) {
+        boolean ok = readFrom(profileDir().resolve(sanitize(name) + ".properties"));
+        if (ok) save();
+        return ok;
+    }
+
+    public static boolean deleteProfile(String name) {
+        try {
+            return Files.deleteIfExists(profileDir().resolve(sanitize(name) + ".properties"));
+        } catch (Exception e) {
+            return false;
         }
     }
 
-    public static void save() {
+    public static void load() { readFrom(file()); }
+
+    public static void save() { writeTo(file()); }
+
+    private static boolean writeTo(Path f) {
         try {
+            Files.createDirectories(f.getParent());
             Properties p = new Properties();
+            p.setProperty("ver", "2");
             for (int i = 0; i < ON.length; i++) p.setProperty("m" + i, String.valueOf(ON[i]));
+            p.setProperty("tab", String.valueOf(lastTab));
             p.setProperty("preset", String.valueOf(preset));
             p.setProperty("hue", String.valueOf(hue));
             p.setProperty("style", String.valueOf(crosshairStyle));
             p.setProperty("chcolor", String.valueOf(crosshairColor));
             p.setProperty("chsize", String.valueOf(crosshairSize));
+            p.setProperty("chthick", String.valueOf(crosshairThick));
+            p.setProperty("choutline", String.valueOf(crosshairOutline));
             p.setProperty("scale", String.valueOf(scale));
             p.setProperty("opacity", String.valueOf(opacity));
             p.setProperty("radius", String.valueOf(radius));
             p.setProperty("inforight", String.valueOf(infoRight));
             p.setProperty("glass", String.valueOf(glass));
-            p.setProperty("ptype", String.valueOf(particleType));
+            p.setProperty("textshadow", String.valueOf(textShadow));
+            p.setProperty("sounds", String.valueOf(sounds));
+            p.setProperty("keysmouse", String.valueOf(keysMouse));
+            p.setProperty("keysspace", String.valueOf(keysSpace));
+            p.setProperty("keyssize", String.valueOf(keysSize));
+            p.setProperty("wmtext", wmText);
+            p.setProperty("wmfps", String.valueOf(wmFps));
+            p.setProperty("wmtime", String.valueOf(wmTime));
             p.setProperty("hbp", String.valueOf(hbPlayers));
             p.setProperty("hbm", String.valueOf(hbMobs));
             p.setProperty("hbi", String.valueOf(hbItems));
+            p.setProperty("hbo", String.valueOf(hbOthers));
+            p.setProperty("hbe", String.valueOf(hbEye));
             p.setProperty("hbc", String.valueOf(hbColor));
             p.setProperty("hbr", String.valueOf(hbRange));
             p.setProperty("animspeed", String.valueOf(animSpeed));
             p.setProperty("bright", String.valueOf(brightness));
+            p.setProperty("ptype", String.valueOf(particleType));
+            p.setProperty("trail", String.valueOf(trailDensity));
             p.setProperty("circle", String.valueOf(circleSize));
             p.setProperty("gpsx", gpsX);
             p.setProperty("gpsz", gpsZ);
             p.setProperty("autocmd", autoCmd);
             p.setProperty("autoint", String.valueOf(autoInterval));
-            for (int i = 0; i < offX.length; i++) {
-                p.setProperty("ox" + i, String.valueOf(offX[i]));
-                p.setProperty("oy" + i, String.valueOf(offY[i]));
-            }
             p.setProperty("zoom", String.valueOf(zoom));
+            p.setProperty("calckey", String.valueOf(calcKey));
+            p.setProperty("hudkey", String.valueOf(hudKey));
             for (int i = 0; i < BIND_COUNT; i++) {
                 p.setProperty("bk" + i, String.valueOf(bindKey[i]));
                 p.setProperty("bc" + i, bindCmd[i]);
             }
-            try (OutputStream out = Files.newOutputStream(file())) { p.store(out, "Useful Visuals"); }
-        } catch (Exception ignored) {
+            for (int i = 0; i < offX.length; i++) {
+                p.setProperty("ox" + i, String.valueOf(offX[i]));
+                p.setProperty("oy" + i, String.valueOf(offY[i]));
+            }
+            try (OutputStream out = Files.newOutputStream(f)) { p.store(out, "Useful Visuals"); }
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
-    private static int clampInt(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
+    private static boolean readFrom(Path f) {
+        try {
+            if (!Files.exists(f)) return false;
+            Properties p = new Properties();
+            try (InputStream in = Files.newInputStream(f)) { p.load(in); }
+            // старые файлы (до версии 2): включённые функции не переносим - при старте всё выключено
+            if ("2".equals(p.getProperty("ver"))) {
+                for (int i = 0; i < ON.length; i++) ON[i] = getb(p, "m" + i, ON[i]);
+            }
+            lastTab = geti(p, "tab", lastTab, 0, 5);
+            preset = geti(p, "preset", preset, 0, PRESET_COUNT - 1);
+            hue = getf(p, "hue", hue, 0f, 1f);
+            crosshairStyle = geti(p, "style", crosshairStyle, 0, 3);
+            crosshairColor = geti(p, "chcolor", crosshairColor, 0, 5);
+            crosshairSize = geti(p, "chsize", crosshairSize, 3, 9);
+            crosshairThick = geti(p, "chthick", crosshairThick, 1, 3);
+            crosshairOutline = getb(p, "choutline", crosshairOutline);
+            scale = getf(p, "scale", scale, 0.7f, 1.5f);
+            opacity = getf(p, "opacity", opacity, 0.3f, 1f);
+            radius = geti(p, "radius", radius, 0, 8);
+            infoRight = getb(p, "inforight", infoRight);
+            glass = getb(p, "glass", glass);
+            textShadow = getb(p, "textshadow", textShadow);
+            sounds = getb(p, "sounds", sounds);
+            keysMouse = getb(p, "keysmouse", keysMouse);
+            keysSpace = getb(p, "keysspace", keysSpace);
+            keysSize = geti(p, "keyssize", keysSize, 20, 30);
+            wmText = p.getProperty("wmtext", wmText);
+            wmFps = getb(p, "wmfps", wmFps);
+            wmTime = getb(p, "wmtime", wmTime);
+            hbPlayers = getb(p, "hbp", hbPlayers);
+            hbMobs = getb(p, "hbm", hbMobs);
+            hbItems = getb(p, "hbi", hbItems);
+            hbOthers = getb(p, "hbo", hbOthers);
+            hbEye = getb(p, "hbe", hbEye);
+            hbColor = geti(p, "hbc", hbColor, 0, 8);
+            hbRange = geti(p, "hbr", hbRange, 8, 128);
+            animSpeed = getf(p, "animspeed", animSpeed, 0.5f, 2f);
+            brightness = getf(p, "bright", brightness, 1f, 15f);
+            particleType = geti(p, "ptype", particleType, 0, 6);
+            trailDensity = geti(p, "trail", trailDensity, 1, 6);
+            circleSize = getf(p, "circle", circleSize, 0.5f, 2.5f);
+            gpsX = p.getProperty("gpsx", gpsX);
+            gpsZ = p.getProperty("gpsz", gpsZ);
+            autoCmd = p.getProperty("autocmd", autoCmd);
+            autoInterval = geti(p, "autoint", autoInterval, 10, 300);
+            zoom = getf(p, "zoom", (float) zoom, 0.05f, 0.6f);
+            calcKey = geti(p, "calckey", calcKey, -1, 512);
+            hudKey = geti(p, "hudkey", hudKey, -1, 512);
+            for (int i = 0; i < BIND_COUNT; i++) {
+                bindKey[i] = geti(p, "bk" + i, bindKey[i], -1, 512);
+                bindCmd[i] = p.getProperty("bc" + i, bindCmd[i]);
+            }
+            for (int i = 0; i < offX.length; i++) {
+                offX[i] = geti(p, "ox" + i, offX[i], -2000, 2000);
+                offY[i] = geti(p, "oy" + i, offY[i], -2000, 2000);
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static int geti(Properties p, String k, int def, int lo, int hi) {
+        try {
+            return Math.max(lo, Math.min(hi, Integer.parseInt(p.getProperty(k, String.valueOf(def)).trim())));
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    private static float getf(Properties p, String k, float def, float lo, float hi) {
+        try {
+            return Math.max(lo, Math.min(hi, Float.parseFloat(p.getProperty(k, String.valueOf(def)).trim())));
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    private static boolean getb(Properties p, String k, boolean def) {
+        String v = p.getProperty(k);
+        return v == null ? def : Boolean.parseBoolean(v.trim());
+    }
 }

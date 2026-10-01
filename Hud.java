@@ -123,6 +123,15 @@ public class Hud {
             if (Config.ON[Config.CROSSHAIR]) crosshair(ms, mc, p, sw, sh);
             if (Config.ON[Config.HITMARKER]) hitMarker(ms, sw / 2, sh / 2);
         }
+        if (Config.hudHidden) {
+            RenderSystem.pushMatrix();
+            try {
+                drawToast(ms, mc, sw, sh);
+            } finally {
+                RenderSystem.popMatrix();
+            }
+            return;
+        }
         if (mc.options.renderDebug) return;
 
         float s = MathHelper.clamp(Config.scale, 0.5f, 2f);
@@ -197,8 +206,9 @@ public class Hud {
     // ================= Ватермарка =================
     private static void watermark(MatrixStack ms, Minecraft mc, int w) {
         FontRenderer f = mc.font;
-        String name = "PrimeVisual";
-        String rest = "  |  " + fps + " fps  |  " + LocalTime.now().format(TIME_FMT);
+        String name = Config.wmText.trim().isEmpty() ? "PrimeVisual" : Config.wmText.trim();
+        String rest = (Config.wmFps ? "  |  " + fps + " fps" : "")
+                + (Config.wmTime ? "  |  " + LocalTime.now().format(TIME_FMT) : "");
         int tw = f.width(name) + f.width(rest);
         int pw = tw + 18, ph = 17;
         int x = Config.infoRight ? 6 : w - pw - 6, y = 6;
@@ -394,20 +404,26 @@ public class Hud {
     // ================= Клавиши + CPS =================
     private static void keystrokes(MatrixStack ms, Minecraft mc, int sh) {
         GameSettings o = mc.options;
-        int s = 22, g = 2;
-        int x = 6, y = sh / 2 - (s * 4 + g * 3);
-        mark(EL_KEYS, x, y, s * 3 + g * 2, s * 4 + g * 3);
+        int s = MathHelper.clamp(Config.keysSize, 20, 30), g = 2;
+        int rows = 2 + (Config.keysMouse ? 1 : 0) + (Config.keysSpace ? 1 : 0);
+        int hgt = s * rows + g * (rows - 1);
+        int x = 6, y = sh / 2 - hgt;
+        mark(EL_KEYS, x, y, s * 3 + g * 2, hgt);
         key(ms, mc, 0, "W", null, x + s + g, y, s, s, o.keyUp.isDown());
         y += s + g;
         key(ms, mc, 1, "A", null, x, y, s, s, o.keyLeft.isDown());
         key(ms, mc, 2, "S", null, x + s + g, y, s, s, o.keyDown.isDown());
         key(ms, mc, 3, "D", null, x + 2 * (s + g), y, s, s, o.keyRight.isDown());
         y += s + g;
-        int bw = (s * 3 + g * 2 - g) / 2;
-        key(ms, mc, 4, "ЛКМ", ClientEvents.cps(true) + " CPS", x, y, bw, s, o.keyAttack.isDown());
-        key(ms, mc, 5, "ПКМ", ClientEvents.cps(false) + " CPS", x + bw + g, y, bw, s, o.keyUse.isDown());
-        y += s + g;
-        key(ms, mc, 6, "ПРОБЕЛ", null, x, y, s * 3 + g * 2, s, o.keyJump.isDown());
+        if (Config.keysMouse) {
+            int bw = (s * 3 + g * 2 - g) / 2;
+            key(ms, mc, 4, "ЛКМ", ClientEvents.cps(true) + " CPS", x, y, bw, s, o.keyAttack.isDown());
+            key(ms, mc, 5, "ПКМ", ClientEvents.cps(false) + " CPS", x + bw + g, y, bw, s, o.keyUse.isDown());
+            y += s + g;
+        }
+        if (Config.keysSpace) {
+            key(ms, mc, 6, "ПРОБЕЛ", null, x, y, s * 3 + g * 2, s, o.keyJump.isDown());
+        }
     }
 
     private static void key(MatrixStack ms, Minecraft mc, int id, String label, String sub,
@@ -517,30 +533,30 @@ public class Hud {
 
     /** Рисует прицел выбранного стиля (используется и в меню для предпросмотра). */
     static void crosshairShape(MatrixStack ms, int cx, int cy, int gap, int len, int style, int c) {
+        int t = Math.max(1, Config.crosshairThick), o = t / 2;
         if (style == 0 || style == 3) {
-            tick(ms, cx - gap - len, cy, cx - gap, cy + 1, c);
-            tick(ms, cx + gap + 1, cy, cx + gap + len + 1, cy + 1, c);
-            if (style == 0) tick(ms, cx, cy - gap - len, cx + 1, cy - gap, c);
-            tick(ms, cx, cy + gap + 1, cx + 1, cy + gap + len + 1, c);
-            tick(ms, cx, cy, cx + 1, cy + 1, c);
+            tick(ms, cx - gap - len, cy - o, cx - gap, cy - o + t, c);
+            tick(ms, cx + gap + 1, cy - o, cx + gap + len + 1, cy - o + t, c);
+            if (style == 0) tick(ms, cx - o, cy - gap - len, cx - o + t, cy - gap, c);
+            tick(ms, cx - o, cy + gap + 1, cx - o + t, cy + gap + len + 1, c);
+            tick(ms, cx - o, cy - o, cx - o + t, cy - o + t, c);
         } else if (style == 1) {
-            tick(ms, cx - 1, cy - 1, cx + 2, cy + 2, c);
+            tick(ms, cx - 1 - o, cy - 1 - o, cx + 2 + o, cy + 2 + o, c);
         } else {
             int r = gap + 1 + len / 2;
             for (int a = 0; a < 360; a += 15) {
                 int px = cx + (int) Math.round(Math.cos(Math.toRadians(a)) * r);
                 int py = cy + (int) Math.round(Math.sin(Math.toRadians(a)) * r);
-                AbstractGui.fill(ms, px, py, px + 1, py + 1, c);
+                AbstractGui.fill(ms, px - o, py - o, px - o + t, py - o + t, c);
             }
-            tick(ms, cx, cy, cx + 1, cy + 1, c);
+            tick(ms, cx - o, cy - o, cx - o + t, cy - o + t, c);
         }
     }
 
     private static void tick(MatrixStack ms, int x1, int y1, int x2, int y2, int c) {
-        AbstractGui.fill(ms, x1 - 1, y1 - 1, x2 + 1, y2 + 1, 0xA0000000);
+        if (Config.crosshairOutline) AbstractGui.fill(ms, x1 - 1, y1 - 1, x2 + 1, y2 + 1, 0xA0000000);
         AbstractGui.fill(ms, x1, y1, x2, y2, c);
     }
-
 
     // ================= Управление позициями элементов =================
     private static void beginEl(int id) {
@@ -862,11 +878,13 @@ public class Hud {
     }
 
     private static void text(MatrixStack ms, FontRenderer f, String s, int x, int y, int color) {
-        f.drawShadow(ms, s, (float) x, (float) y, color);
+        if (Config.textShadow) f.drawShadow(ms, s, (float) x, (float) y, color);
+        else f.draw(ms, s, (float) x, (float) y, color);
     }
 
     private static void textRight(MatrixStack ms, FontRenderer f, String s, int xRight, int y, int color) {
-        f.drawShadow(ms, s, (float) (xRight - f.width(s)), (float) y, color);
+        if (Config.textShadow) f.drawShadow(ms, s, (float) (xRight - f.width(s)), (float) y, color);
+        else f.draw(ms, s, (float) (xRight - f.width(s)), (float) y, color);
     }
 
     static int lerp(int a, int b, float t) {
