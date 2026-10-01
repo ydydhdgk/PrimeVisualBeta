@@ -31,8 +31,15 @@ sourceSets {
 processResources {
     from('mods.toml') { into 'META-INF' }
     from('pack.mcmeta')
+    from('logo.png')
+    from('logo.png') { into 'assets/visuals/textures' }
     from('en_us.json') { into 'assets/visuals/lang' }
     from('ru_ru.json') { into 'assets/visuals/lang' }
+    from('options_background.png') { into 'assets/minecraft/textures/gui' }
+    from('minecraft.png') { into 'assets/minecraft/textures/gui/title' }
+    (0..5).each { i ->
+        from("panorama_${i}.png") { into 'assets/minecraft/textures/gui/title/background' }
+    }
 }
 
 minecraft {

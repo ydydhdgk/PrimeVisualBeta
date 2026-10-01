@@ -5,8 +5,10 @@ license="MIT"
 [[mods]]
 modId="visuals"
 version="1.0.0"
-displayName="Useful Visuals"
-description='''Красивый HUD: FPS, координаты, курс, эффекты, прочность, клавиши, CPS, прицел, зум.'''
+displayName="PrimeVisual"
+logoFile="logo.png"
+authors="whiteshapka"
+description='''PrimeVisual: HUD, прицел, хитбоксы, частицы, анимации и меню в стиле Liquid Glass. Сделано whiteshapka.'''
 
 [[dependencies.visuals]]
 modId="forge"

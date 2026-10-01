@@ -267,11 +267,14 @@ public class MenuScreen extends Screen {
             Hud.rr(ms, px, py, SIDE, H, 10, 0xFF0B0B11);
             AbstractGui.fill(ms, px + SIDE - 10, py, px + SIDE, py + H, 0xFF0B0B11);
         }
+        minecraft.getTextureManager().bind(Hud.LOGO);
+        RenderSystem.color4f(1f, 1f, 1f, 1f);
+        AbstractGui.blit(ms, px + 8, py + 6, 0f, 0f, 26, 26, 26, 26);
         ms.pushPose();
-        ms.scale(1.2f, 1.2f, 1f);
-        Hud.gradText(ms, font, "PrimeVisual", Math.round((px + 12) / 1.2f), Math.round((py + 11) / 1.2f));
+        ms.scale(0.9f, 0.9f, 1f);
+        Hud.gradText(ms, font, "PrimeVisual", Math.round((px + 38) / 0.9f), Math.round((py + 14) / 0.9f));
         ms.popPose();
-        font.draw(ms, "Right Shift - меню", px + 14, py + 26, 0xFF5D6076);
+        font.draw(ms, "Right Shift - меню", px + 14, py + 35, 0xFF5D6076);
 
         int ty0 = py + 46;
         tabInd += (tab * (float) TAB_STEP - tabInd) * 0.25f;

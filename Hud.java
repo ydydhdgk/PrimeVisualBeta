@@ -46,6 +46,7 @@ public class Hud {
     private static final int[][] BOUNDS = new int[EL_COUNT][4];
     private static final long[] SEEN = new long[EL_COUNT];
 
+    static final ResourceLocation LOGO = new ResourceLocation("visuals", "textures/logo.png");
     static long hitTime = 0L;
     private static float gpsShown = 0f;
     private static float shownGap = 3f;
@@ -210,11 +211,14 @@ public class Hud {
         String rest = (Config.wmFps ? "  |  " + fps + " fps" : "")
                 + (Config.wmTime ? "  |  " + LocalTime.now().format(TIME_FMT) : "");
         int tw = f.width(name) + f.width(rest);
-        int pw = tw + 18, ph = 17;
+        int pw = tw + 31, ph = 17;
         int x = Config.infoRight ? 6 : w - pw - 6, y = 6;
         mark(EL_WATER, x, y, pw, ph);
         surface(ms, x, y, pw, ph, Config.radius, panelColor(), true);
-        int nx = gradText(ms, f, name, x + 9, y + 5);
+        mc.getTextureManager().bind(LOGO);
+        RenderSystem.color4f(1f, 1f, 1f, 1f);
+        AbstractGui.blit(ms, x + 6, y + 3, 0f, 0f, 11, 11, 11, 11);
+        int nx = gradText(ms, f, name, x + 21, y + 5);
         f.drawShadow(ms, rest, (float) nx, (float) (y + 5), LABEL);
     }
 
