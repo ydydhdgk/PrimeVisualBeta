@@ -618,6 +618,22 @@ public class MenuScreen extends Screen {
         y = sliderBlock(ms, cx, y, "Размер круга прыжка", String.format(Locale.ROOT, "%.1f бл", Config.circleSize),
                 106, (Config.circleSize - 0.5f) / 2f);
 
+        y = section(ms, "Косметика (видите только вы)", cx, y);
+        y = moduleCard(ms, Config.CAPE, cx, y, mx, my);
+        label(ms, "Своя картинка: .minecraft/primevisual/cape.png", cx, y - 4);
+        y += 10;
+        button(ms, cx, y, CW, 22, "Обновить картинку плаща", 821, mx, my);
+        y += 28;
+        y = moduleCard(ms, Config.HAT, cx, y, mx, my);
+        label(ms, "Цвет шляпы", cx, y + 1);
+        y = colorChips(ms, cx, y + 12, new String[]{"Соломенная", "Акцент", "Радуга"}, Config.hatColor, 460, mx, my);
+        y = sliderBlock(ms, cx, y, "Размер шляпы", Math.round(Config.hatScale * 100) + "%", 114, (Config.hatScale - 0.7f) / 0.8f);
+        y = moduleCard(ms, Config.HALO, cx, y, mx, my);
+        label(ms, "Цвет нимба", cx, y + 1);
+        y = colorChips(ms, cx, y + 12, new String[]{"Золотой", "Акцент", "Радуга"}, Config.haloColor, 465, mx, my);
+        y = sliderBlock(ms, cx, y, "Размер нимба", Math.round(Config.haloScale * 100) + "%", 115, (Config.haloScale - 0.6f) / 1.0f);
+        y = sliderBlock(ms, cx, y, "Высота нимба", Math.round(Config.haloHeight * 100) + "%", 116, Config.haloHeight / 0.3f);
+
         y = section(ms, "Анимации", cx, y);
         y = moduleCard(ms, Config.ANIM_CHAT, cx, y, mx, my);
         y = moduleCard(ms, Config.ANIM_TAB, cx, y, mx, my);
@@ -626,6 +642,25 @@ public class MenuScreen extends Screen {
         y = sliderBlock(ms, cx, y, "Скорость анимаций", String.format(Locale.ROOT, "×%.1f", Config.animSpeed),
                 108, (Config.animSpeed - 0.5f) / 1.5f);
         return y + 4;
+    }
+
+    /** Три чипа выбора цвета; последний (радуга) переливается. */
+    private int colorChips(MatrixStack ms, int x, int y, String[] names, int sel, int baseId, int mx, int my) {
+        int cw = (CW - 8) / 3;
+        for (int k = 0; k < 3; k++) {
+            int cx = x + k * (cw + 4);
+            if (k == 2) {
+                if (sel == 2) Hud.rr(ms, cx - 2, y - 2, cw + 4, 24, 6, 0xFFFFFFFF);
+                Hud.rr(ms, cx, y, cw, 20, 5, Hud.rainbow(0f));
+            } else if (k == sel) {
+                Hud.rr(ms, cx, y, cw, 20, 5, Hud.lerp(Config.c1(), Config.c2(), 0.5f));
+            } else {
+                card(ms, cx, y, cw, 20, 5, 0xFF171822, 0xFF21222F, in(mx, my, cx, y, cw, 20) ? 1f : 0f);
+            }
+            font.drawShadow(ms, names[k], cx + (cw - font.width(names[k])) / 2f, y + 6, Hud.WHITE);
+            hits.add(new Hit(cx, y, cw, 20, baseId + k));
+        }
+        return y + 26;
     }
 
     // ============================ Вкладка «Утилиты» ============================
@@ -809,6 +844,9 @@ public class MenuScreen extends Screen {
             case 111: Config.keysSize = 20 + Math.round(frac * 10f); break;
             case 112: Config.crosshairThick = 1 + Math.round(frac * 2f); break;
             case 113: Config.trailDensity = 1 + Math.round(frac * 5f); break;
+            case 114: Config.hatScale = Math.round((0.7f + frac * 0.8f) * 20f) / 20f; break;
+            case 115: Config.haloScale = Math.round((0.6f + frac) * 20f) / 20f; break;
+            case 116: Config.haloHeight = Math.round(frac * 0.3f * 100f) / 100f; break;
             default: break;
         }
     }
@@ -841,7 +879,7 @@ public class MenuScreen extends Screen {
         if (id < Config.ON.length) {
             Config.ON[id] = !Config.ON[id];
             click(Config.ON[id] ? 1.3f : 0.8f);
-        } else if (id >= 100 && id <= 113) {
+        } else if (id >= 100 && id <= 116) {
             drag = id;
             setSlider(id, lx);
         } else if (id >= 200 && id < 200 + TABS.length) {
@@ -867,6 +905,15 @@ public class MenuScreen extends Screen {
             click(1.1f);
         } else if (id >= 450 && id < 459) {
             Config.hbColor = id - 450;
+            click(1.1f);
+        } else if (id >= 460 && id < 463) {
+            Config.hatColor = id - 460;
+            click(1.1f);
+        } else if (id >= 465 && id < 468) {
+            Config.haloColor = id - 465;
+            click(1.1f);
+        } else if (id == 821) {
+            Cosmetics.reloadCape();
             click(1.1f);
         } else if (id == 500) {
             Config.reset();

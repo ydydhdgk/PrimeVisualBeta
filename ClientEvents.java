@@ -24,6 +24,7 @@ import net.minecraft.particles.RedstoneParticleData;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraftforge.client.event.RenderLivingEvent;
+import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraft.util.text.TextFormatting;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -387,6 +388,12 @@ public class ClientEvents {
             RenderSystem.popMatrix();
             guiPushed = false;
         }
+    }
+
+    /** Косметика: плащ, шляпа, нимб. */
+    @SubscribeEvent
+    public void onPlayerPost(RenderPlayerEvent.Post e) {
+        Cosmetics.render(e);
     }
 
     // ======================= Цветные хитбоксы =======================

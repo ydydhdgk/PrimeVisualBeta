@@ -23,7 +23,7 @@ public class Config {
             "Следы", "Круг прыжка", "GPS-метка", "Авто-команда",
             "Цветные хитбоксы", "Анимация чата", "Анимация таба", "Анимация окон", "Плавный хотбар",
             "Авто-спринт", "Яркость", "Точка смерти", "Время в чате", "Кинокамера при зуме", "Погода", "Голод",
-            "Калькулятор"
+            "Калькулятор", "Свой плащ", "Китайская шляпа", "Нимб"
     };
     public static final String[] DESCS = {
             "Кадры в секунду", "Позиция XYZ", "Сторона света и угол", "Блоков в секунду", "Задержка до сервера",
@@ -39,7 +39,9 @@ public class Config {
             "Плавное открытие списка игроков", "Плавное открытие инвентаря и окон", "Скользящая подсветка слота",
             "Бежать без удержания Ctrl", "Освещение как днём (Fullbright)", "Запомнить место смерти и включить GPS",
             "[ЧЧ:ММ] перед сообщениями", "Плавный поворот камеры при зуме", "Ясно, дождь или гроза", "Сытость персонажа",
-            "Считает примеры из чата и подсказывает ответ"
+            "Считает примеры из чата и подсказывает ответ",
+            "Плащ с вашей картинкой (видите только вы)", "Соломенная шляпа-конус на голове",
+            "Светящееся кольцо над головой"
     };
     public static final int FPS = 0, COORDS = 1, DIR = 2, SPEED = 3, PING = 4, LIGHT = 5,
             TIME = 6, EFFECTS = 7, DURABILITY = 8, KEYS = 9, CROSSHAIR = 10, TARGET = 11, WATERMARK = 12,
@@ -48,7 +50,7 @@ public class Config {
             TRAILS = 22, JUMPCIRCLE = 23, GPS = 24, AUTOCMD = 25,
             HITBOX = 26, ANIM_CHAT = 27, ANIM_TAB = 28, ANIM_GUI = 29, ANIM_HOTBAR = 30,
             SPRINT = 31, BRIGHT = 32, DEATHPOINT = 33, CHATTIME = 34, CINEZOOM = 35, WEATHER = 36, HUNGER = 37,
-            CALC = 38;
+            CALC = 38, CAPE = 39, HAT = 40, HALO = 41;
 
     public static final boolean[] ON = new boolean[NAMES.length];
 
@@ -94,6 +96,8 @@ public class Config {
     public static int hbColor = 0;
     public static int hbRange = 64;
     public static float animSpeed = 1f;
+    public static int hatColor = 0, haloColor = 0;
+    public static float hatScale = 1f, haloScale = 1f, haloHeight = 0f;
     public static float brightness = 10f;
     public static int particleType = 0;
     public static int trailDensity = 2;
@@ -181,6 +185,11 @@ public class Config {
         particleType = 0;
         trailDensity = 2;
         circleSize = 1.5f;
+        hatColor = 0;
+        haloColor = 0;
+        hatScale = 1f;
+        haloScale = 1f;
+        haloHeight = 0f;
         zoom = 0.25;
     }
 
@@ -287,6 +296,11 @@ public class Config {
             p.setProperty("autocmd", autoCmd);
             p.setProperty("autoint", String.valueOf(autoInterval));
             p.setProperty("zoom", String.valueOf(zoom));
+            p.setProperty("hatcolor", String.valueOf(hatColor));
+            p.setProperty("halocolor", String.valueOf(haloColor));
+            p.setProperty("hatscale", String.valueOf(hatScale));
+            p.setProperty("haloscale", String.valueOf(haloScale));
+            p.setProperty("haloheight", String.valueOf(haloHeight));
             p.setProperty("calckey", String.valueOf(calcKey));
             p.setProperty("hudkey", String.valueOf(hudKey));
             for (int i = 0; i < BIND_COUNT; i++) {
@@ -351,6 +365,11 @@ public class Config {
             autoCmd = p.getProperty("autocmd", autoCmd);
             autoInterval = geti(p, "autoint", autoInterval, 10, 300);
             zoom = getf(p, "zoom", (float) zoom, 0.05f, 0.6f);
+            hatColor = geti(p, "hatcolor", hatColor, 0, 2);
+            haloColor = geti(p, "halocolor", haloColor, 0, 2);
+            hatScale = getf(p, "hatscale", hatScale, 0.7f, 1.5f);
+            haloScale = getf(p, "haloscale", haloScale, 0.6f, 1.6f);
+            haloHeight = getf(p, "haloheight", haloHeight, 0f, 0.3f);
             calcKey = geti(p, "calckey", calcKey, -1, 512);
             hudKey = geti(p, "hudkey", hudKey, -1, 512);
             for (int i = 0; i < BIND_COUNT; i++) {

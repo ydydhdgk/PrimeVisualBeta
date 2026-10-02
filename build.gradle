@@ -37,6 +37,9 @@ processResources {
     from('ru_ru.json') { into 'assets/visuals/lang' }
     from('options_background.png') { into 'assets/minecraft/textures/gui' }
     from('minecraft.png') { into 'assets/minecraft/textures/gui/title' }
+    from('cape.png') { into 'assets/visuals/textures' }
+    from('hat.png') { into 'assets/visuals/textures' }
+    from('halo.png') { into 'assets/visuals/textures' }
     (0..5).each { i ->
         from("panorama_${i}.png") { into 'assets/minecraft/textures/gui/title/background' }
     }
