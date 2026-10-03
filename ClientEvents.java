@@ -23,6 +23,8 @@ import net.minecraft.particles.ParticleTypes;
 import net.minecraft.particles.RedstoneParticleData;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
+import net.minecraftforge.client.event.RenderBlockOverlayEvent;
+import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraft.util.text.TextFormatting;
@@ -136,6 +138,13 @@ public class ClientEvents {
             savedGamma = -1.0;
         }
 
+        if (mc.level != null) { // клиентское время суток и погода
+            if (Config.ON[Config.TIMECHG]) mc.level.setDayTime((long) Config.timeOfDay);
+            if (Config.ON[Config.NORAIN]) {
+                mc.level.setRainLevel(0f);
+                mc.level.setThunderLevel(0f);
+            }
+        }
         boolean zoomNow = Config.ON[Config.CINEZOOM] && ZOOM.isDown();
         if (zoomNow != cineState) {
             mc.options.smoothCamera = zoomNow;
@@ -315,6 +324,12 @@ public class ClientEvents {
             e.setCanceled(true);
             return;
         }
+        if ((type == RenderGameOverlayEvent.ElementType.POTION_ICONS && Config.ON[Config.HIDEPOT])
+                || (type == RenderGameOverlayEvent.ElementType.BOSSINFO && Config.ON[Config.HIDEBOSS])
+                || (type == RenderGameOverlayEvent.ElementType.VIGNETTE && Config.ON[Config.HIDEVIG])) {
+            e.setCanceled(true);
+            return;
+        }
         if (type == RenderGameOverlayEvent.ElementType.PLAYER_LIST && Config.ON[Config.ANIM_TAB] && !e.isCanceled()) {
             long now = System.currentTimeMillis();
             if (now - tabLastSeen > 150L) tabStart = now; // список только что открыли
@@ -446,6 +461,51 @@ public class ClientEvents {
         }
         } catch (Throwable t) {
             Safe.fail("onScreenPost", t);
+        }
+    }
+
+    /** Тряска камеры при ударе и получении урона. */
+    @SubscribeEvent
+    public void onCamera(EntityViewRenderEvent.CameraSetup e) {
+        if (!Config.ON[Config.SHAKE] || Safe.off("onCamera")) return;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            long now = System.currentTimeMillis();
+            float k = 0f;
+            long dt = now - Fx.shakeAt;
+            if (dt < 350L) {
+                float q = 1f - dt / 350f;
+                k = q * q;
+            }
+            if (mc.player != null && mc.player.hurtTime > 0) k = Math.max(k, mc.player.hurtTime / 10f);
+            if (k > 0f) {
+                float a = Config.shakeAmp * k;
+                e.setRoll(e.getRoll() + (float) Math.sin(now * 0.06) * 3f * a);
+                e.setPitch(e.getPitch() + (float) Math.sin(now * 0.09) * 0.8f * a);
+            }
+        } catch (Throwable t) {
+            Safe.fail("onCamera", t);
+        }
+    }
+
+    /** Положение и размер рук / предмета. */
+    @SubscribeEvent
+    public void onHand(RenderHandEvent e) {
+        if (!Config.ON[Config.VIEWMODEL] || Safe.off("onHand")) return;
+        try {
+            MatrixStack ms = e.getMatrixStack();
+            ms.translate(Config.handX, Config.handY, Config.handZ);
+            ms.scale(Config.handScale, Config.handScale, Config.handScale);
+        } catch (Throwable t) {
+            Safe.fail("onHand", t);
+        }
+    }
+
+    /** Без огня перед глазами. */
+    @SubscribeEvent
+    public void onBlockOverlay(RenderBlockOverlayEvent e) {
+        if (Config.ON[Config.NOFIRE] && e.getOverlayType() == RenderBlockOverlayEvent.OverlayType.FIRE) {
+            e.setCanceled(true);
         }
     }
 

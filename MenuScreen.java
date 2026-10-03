@@ -518,16 +518,25 @@ public class MenuScreen extends Screen {
     // ============================ Вкладка «HUD» ============================
     private int drawHudTab(MatrixStack ms, int cx, int y, int mx, int my) {
         y = section(ms, "Информация", cx, y);
-        int[] info = {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME};
+        int[] info = {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME,
+                Config.HEALTH, Config.SERVER, Config.MEMORY, Config.SESSION};
         for (int i : info) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Мир и игрок", cx, y);
-        int[] world = {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.WEATHER, Config.HUNGER, Config.COMPASS};
+        int[] world = {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.WEATHER, Config.HUNGER, Config.COMPASS, Config.LOOKAT};
         for (int i : world) y = moduleCard(ms, i, cx, y, mx, my);
+
+        y = section(ms, "Бой", cx, y);
+        int[] combat = {Config.REACH, Config.COMBO, Config.KILLS, Config.DMGNUM, Config.COOLDOWN};
+        for (int i : combat) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Интерфейс", cx, y);
         int[] ui = {Config.EFFECTS, Config.DURABILITY, Config.ITEMS, Config.TARGET, Config.WARN, Config.NOTIFY};
         for (int i : ui) y = moduleCard(ms, i, cx, y, mx, my);
+
+        y = section(ms, "Чистый экран", cx, y);
+        int[] clean = {Config.HIDEPOT, Config.HIDEBOSS, Config.HIDEVIG};
+        for (int i : clean) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Клавиши WASD", cx, y);
         y = moduleCard(ms, Config.KEYS, cx, y, mx, my);
@@ -688,6 +697,22 @@ public class MenuScreen extends Screen {
         y = colorChips(ms, cx, y + 12, new String[]{"Акцент", "Тёмная", "Радуга"}, Config.vigColor, 490, mx, my);
         y = moduleCard(ms, Config.LOWHP, cx, y, mx, my);
         y = moduleCard(ms, Config.SPEEDLINES, cx, y, mx, my);
+
+        y = section(ms, "Мир (только у вас на экране)", cx, y);
+        y = moduleCard(ms, Config.TIMECHG, cx, y, mx, my);
+        String tod = String.format(Locale.ROOT, "%02d:%02d", (Config.timeOfDay / 1000 + 6) % 24, (Config.timeOfDay % 1000) * 60 / 1000);
+        y = sliderBlock(ms, cx, y, "Время суток", tod, 120, Config.timeOfDay / 24000f);
+        y = moduleCard(ms, Config.NORAIN, cx, y, mx, my);
+        y = moduleCard(ms, Config.NOFIRE, cx, y, mx, my);
+
+        y = section(ms, "Камера и руки", cx, y);
+        y = moduleCard(ms, Config.SHAKE, cx, y, mx, my);
+        y = sliderBlock(ms, cx, y, "Сила тряски", String.format(Locale.ROOT, "×%.1f", Config.shakeAmp), 121, (Config.shakeAmp - 0.2f) / 1.3f);
+        y = moduleCard(ms, Config.VIEWMODEL, cx, y, mx, my);
+        y = sliderBlock(ms, cx, y, "Руки: влево / вправо", String.format(Locale.ROOT, "%+.2f", Config.handX), 122, Config.handX + 0.5f);
+        y = sliderBlock(ms, cx, y, "Руки: вниз / вверх", String.format(Locale.ROOT, "%+.2f", Config.handY), 123, Config.handY + 0.5f);
+        y = sliderBlock(ms, cx, y, "Руки: ближе / дальше", String.format(Locale.ROOT, "%+.2f", Config.handZ), 124, Config.handZ + 0.5f);
+        y = sliderBlock(ms, cx, y, "Размер рук", Math.round(Config.handScale * 100) + "%", 125, Config.handScale - 0.5f);
 
         y = section(ms, "Косметика (видите только вы)", cx, y);
         y = moduleCard(ms, Config.CAPE, cx, y, mx, my);
@@ -921,6 +946,12 @@ public class MenuScreen extends Screen {
             case 117: Config.fxCount = 3 + Math.round(frac * 17f); break;
             case 118: Config.fxSize = Math.round((0.5f + frac * 1.5f) * 20f) / 20f; break;
             case 119: Config.hitVolume = Math.round((0.1f + frac * 0.9f) * 20f) / 20f; break;
+            case 120: Config.timeOfDay = Math.round(frac * 240f) * 100; break;
+            case 121: Config.shakeAmp = Math.round((0.2f + frac * 1.3f) * 10f) / 10f; break;
+            case 122: Config.handX = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 123: Config.handY = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 124: Config.handZ = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 125: Config.handScale = Math.round((0.5f + frac) * 20f) / 20f; break;
             default: break;
         }
     }
@@ -953,7 +984,7 @@ public class MenuScreen extends Screen {
         if (id < Config.ON.length) {
             Config.ON[id] = !Config.ON[id];
             click(Config.ON[id] ? 1.3f : 0.8f);
-        } else if (id >= 100 && id <= 119) {
+        } else if (id >= 100 && id <= 125) {
             drag = id;
             setSlider(id, lx);
         } else if (id >= 200 && id < 200 + TABS.length) {

@@ -16,6 +16,7 @@ import net.minecraft.util.math.vector.Vector3f;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 
 /** Эффекты при ударе (доллары, амогусы, айфоны), звуки и экранные эффекты. */
@@ -31,13 +32,18 @@ public class Fx {
 
     private static class P {
         float x, y, vx, vy, rot, vr, size, life;
-        int type;
+        int type, color;
+        String text;
         long born;
     }
 
     private static final List<P> LIST = new ArrayList<>();
     private static long lastFrame = System.currentTimeMillis();
     private static LivingEntity watched;
+    private static float lastHp;
+    static float reach;
+    static long reachAt, comboAt, shakeAt;
+    static int combo, kills;
 
     /** Режим 0 доллары, 1 амогусы, 2 айфоны, 3 микс, 4 монеты, 5 алмазы, 6 золото (секрет). */
     private static int pick(int mode) {
@@ -85,26 +91,68 @@ public class Fx {
     }
 
     static void onHit(Minecraft mc) {
+        long now = System.currentTimeMillis();
+        try {
+            if (mc.hitResult != null && mc.player != null) {
+                reach = (float) mc.player.getEyePosition(1f).distanceTo(mc.hitResult.getLocation());
+                reachAt = now;
+            }
+        } catch (Exception ignored) {
+        }
+        combo = (now - comboAt < 2000L) ? combo + 1 : 1;
+        comboAt = now;
+        shakeAt = now;
         if (Config.ON[Config.HITFX]) burst(mc, Config.fxCount);
         if (Config.ON[Config.HITSND]) playSound(mc, 1f);
     }
 
     static void onKill(Minecraft mc) {
+        kills++;
         if (Config.ON[Config.KILLFX]) burst(mc, Config.fxCount * 2 + 4);
         if (Config.ON[Config.HITSND]) playSound(mc, 1.25f);
     }
 
-    /** Отслеживание победы над целью (вызывается каждый тик). */
+    static void floatText(Minecraft mc, String text, int color) {
+        int w = mc.getWindow().getGuiScaledWidth(), h = mc.getWindow().getGuiScaledHeight();
+        P p = new P();
+        p.text = text;
+        p.color = color;
+        p.x = w / 2f + (R.nextFloat() - 0.5f) * 50f;
+        p.y = h / 2f - 12f;
+        p.vx = (R.nextFloat() - 0.5f) * 20f;
+        p.vy = -50f;
+        p.life = 900f;
+        p.born = System.currentTimeMillis();
+        LIST.add(p);
+    }
+
+    private static String fmt(float v) {
+        return v >= 10f ? String.valueOf(Math.round(v)) : String.format(Locale.ROOT, "%.1f", v);
+    }
+
+    /** Отслеживание цели: победы, цифры урона, сброс комбо (каждый тик). */
     static void track(Minecraft mc) {
-        if (!Config.ON[Config.KILLFX]) {
+        boolean need = Config.ON[Config.KILLFX] || Config.ON[Config.DMGNUM] || Config.ON[Config.KILLS];
+        if (!need || mc.player == null) {
             watched = null;
             return;
         }
+        if (mc.player.hurtTime > 0) combo = 0;
         Entity pick = mc.crosshairPickEntity;
-        if (pick instanceof LivingEntity && pick != mc.player) watched = (LivingEntity) pick;
+        if (pick instanceof LivingEntity && pick != mc.player && pick != watched) {
+            watched = (LivingEntity) pick;
+            lastHp = watched.getHealth();
+        }
         if (watched == null) return;
+        float hp = watched.getHealth();
+        float d = lastHp - hp;
+        if (Config.ON[Config.DMGNUM]) {
+            if (d >= 0.05f) floatText(mc, "-" + fmt(d), 0xFF5566);
+            else if (d <= -1f) floatText(mc, "+" + fmt(-d), 0x55FF7A);
+        }
+        lastHp = hp;
         long since = System.currentTimeMillis() - Hud.hitTime;
-        if (watched.getHealth() <= 0f || !watched.isAlive()) {
+        if (hp <= 0f || !watched.isAlive()) {
             if (since < 2500L) onKill(mc);
             watched = null;
         } else if (pick != watched && since > 3000L) {
@@ -127,11 +175,18 @@ public class Fx {
                 it.remove();
                 continue;
             }
-            p.vy += 260f * dt;
+            p.vy += (p.text != null ? 0f : 260f) * dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
             p.rot += p.vr * dt;
             float a = 1f - Math.max(0f, (age - p.life * 0.5f) / (p.life * 0.5f));
+            if (p.text != null) {
+                int al = (int) (a * 255f);
+                if (al > 8) {
+                    mc.font.drawShadow(ms, p.text, p.x - mc.font.width(p.text) / 2f, p.y, (al << 24) | (p.color & 0x00FFFFFF));
+                }
+                continue;
+            }
             RenderSystem.color4f(1f, 1f, 1f, a);
             mc.getTextureManager().bind(RL[p.type]);
             int s = Math.max(4, Math.round(p.size));

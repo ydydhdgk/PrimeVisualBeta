@@ -17,7 +17,11 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.potion.Effect;
 import net.minecraft.potion.EffectInstance;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.BlockRayTraceResult;
+import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.math.MathHelper;
 
 import java.time.LocalTime;
@@ -40,13 +44,14 @@ public class Hud {
 
     // идентификаторы перетаскиваемых элементов HUD
     static final int EL_INFO = 0, EL_GRAPH = 1, EL_EFFECTS = 2, EL_DURA = 3, EL_ITEMS = 4, EL_KEYS = 5,
-            EL_TARGET = 6, EL_WATER = 7, EL_COMPASS = 8, EL_GPS = 9, EL_COUNT = 10;
+            EL_TARGET = 6, EL_WATER = 7, EL_COMPASS = 8, EL_GPS = 9, EL_LOOK = 10, EL_COUNT = 11;
     static final String[] EL_NAMES = {"Инфо", "График FPS", "Эффекты", "Прочность", "Предметы",
-            "Клавиши", "Цель", "Ватермарка", "Компас", "GPS"};
+            "Клавиши", "Цель", "Ватермарка", "Компас", "GPS", "Под прицелом"};
     private static final int[][] BOUNDS = new int[EL_COUNT][4];
     private static final long[] SEEN = new long[EL_COUNT];
 
     static final ResourceLocation LOGO = new ResourceLocation("visuals", "textures/logo.png");
+    private static final long SESSION_START = System.currentTimeMillis();
     static long hitTime = 0L;
     private static float gpsShown = 0f;
     private static float shownGap = 3f;
@@ -201,6 +206,11 @@ public class Hud {
                 target(ms, mc, w, topY);
                 endEl();
             }
+            if (noScreen && Config.ON[Config.LOOKAT]) {
+                beginEl(EL_LOOK);
+                lookAt(ms, mc, w, h);
+                endEl();
+            }
             if (Config.ON[Config.WATERMARK]) {
                 beginEl(EL_WATER);
                 watermark(ms, mc, w);
@@ -281,7 +291,7 @@ public class Hud {
             long t = mc.level.getDayTime() % 24000L;
             int hours = (int) ((t / 1000L + 6L) % 24L);
             int minutes = (int) ((t % 1000L) * 60L / 1000L);
-            rows.add(new Row("Мир. время", String.format(Locale.ROOT, "%02d:%02d", hours, minutes), WHITE));
+            rows.add(new Row("Мир. время", String.format(Locale.ROOT, "День %d  %02d:%02d", mc.level.getDayTime() / 24000L + 1, hours, minutes), WHITE));
         }
         if (Config.ON[Config.WEATHER] && mc.level != null) {
             boolean thunder = mc.level.isThundering(), rain = mc.level.isRaining();
@@ -291,6 +301,43 @@ public class Hud {
         if (Config.ON[Config.HUNGER]) {
             int food = p.getFoodData().getFoodLevel();
             rows.add(new Row("Голод", food + " / 20", food <= 6 ? RED : food <= 12 ? YELLOW : GREEN));
+        }
+        if (Config.ON[Config.HEALTH]) {
+            float hp = p.getHealth(), ab = p.getAbsorptionAmount();
+            String hv = String.format(Locale.ROOT, "%.1f", hp) + (ab > 0f ? "+" + Math.round(ab) : "") + "  Бр " + p.getArmorValue();
+            rows.add(new Row("Здоровье", hv, hp <= 6f ? RED : hp <= 12f ? YELLOW : GREEN));
+        }
+        if (Config.ON[Config.SERVER]) {
+            ServerData sd = mc.getCurrentServer();
+            String ip = sd != null ? sd.ip : "одиночная игра";
+            if (ip.length() > 16) ip = ip.substring(0, 16);
+            int online = mc.getConnection() != null ? mc.getConnection().getOnlinePlayers().size() : 0;
+            rows.add(new Row("Сервер", ip + (sd != null ? "  " + online : ""), WHITE));
+        }
+        if (Config.ON[Config.MEMORY]) {
+            Runtime rt = Runtime.getRuntime();
+            long used = (rt.totalMemory() - rt.freeMemory()) >> 20, maxMb = rt.maxMemory() >> 20;
+            rows.add(new Row("Память", used + "/" + maxMb + " МБ", used * 10 > maxMb * 9 ? RED : used * 4 > maxMb * 3 ? YELLOW : WHITE));
+        }
+        if (Config.ON[Config.SESSION]) {
+            long sec = (System.currentTimeMillis() - SESSION_START) / 1000L;
+            rows.add(new Row("Сессия", String.format(Locale.ROOT, "%d:%02d:%02d", sec / 3600, sec / 60 % 60, sec % 60), WHITE));
+        }
+        long nowMs = System.currentTimeMillis();
+        if (Config.ON[Config.REACH]) {
+            rows.add(new Row("Дистанция", nowMs - Fx.reachAt < 5000L ? String.format(Locale.ROOT, "%.2f бл", Fx.reach) : "—", WHITE));
+        }
+        if (Config.ON[Config.COMBO]) {
+            rows.add(new Row("Комбо", nowMs - Fx.comboAt < 2500L && Fx.combo > 0 ? "x" + Fx.combo : "—", Fx.combo >= 5 ? YELLOW : WHITE));
+        }
+        if (Config.ON[Config.KILLS]) rows.add(new Row("Убийства", String.valueOf(Fx.kills), WHITE));
+        if (Config.ON[Config.COOLDOWN]) {
+            Item[] cdItems = {Items.ENDER_PEARL, Items.CHORUS_FRUIT, Items.SHIELD};
+            String[] cdNames = {"Жемчуг", "Хорус", "Щит"};
+            for (int ci = 0; ci < cdItems.length; ci++) {
+                float pc = p.getCooldowns().getCooldownPercent(cdItems[ci], 0f);
+                if (pc > 0f) rows.add(new Row(cdNames[ci], Math.round(pc * 100f) + "%", YELLOW));
+            }
         }
         if (Config.ON[Config.TIME]) {
             rows.add(new Row("Время", LocalTime.now().format(TIME_FMT), WHITE));
@@ -634,6 +681,21 @@ public class Hud {
         text(ms, mc.font, arrived ? "Прибыли!" : Math.round(dist) + " бл", x + 42, y + 17, arrived ? GREEN : WHITE);
         textRight(ms, mc.font, gx + " " + gz, x + w - 7, y + 6, LABEL);
         return y + h + 4;
+    }
+
+    // ================= Что под прицелом (блок) =================
+    private static void lookAt(MatrixStack ms, Minecraft mc, int w, int h) {
+        RayTraceResult hr = mc.hitResult;
+        if (hr == null || hr.getType() != RayTraceResult.Type.BLOCK || mc.level == null || mc.player == null) return;
+        BlockPos pos = ((BlockRayTraceResult) hr).getBlockPos();
+        String name = mc.level.getBlockState(pos).getBlock().getName().getString();
+        String dist = String.format(Locale.ROOT, "%.1f бл", mc.player.getEyePosition(1f).distanceTo(hr.getLocation()));
+        int tw = Math.max(80, mc.font.width(name) + mc.font.width(dist) + 36), th = 20;
+        int x = (w - tw) / 2, y = h / 2 + 34;
+        panel(ms, x, y, tw, th);
+        mark(EL_LOOK, x, y, tw, th);
+        text(ms, mc.font, name, x + 9, y + 6, WHITE);
+        textRight(ms, mc.font, dist, x + tw - 7, y + 6, LABEL);
     }
 
     // ================= Компас =================
