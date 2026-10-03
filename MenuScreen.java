@@ -95,6 +95,27 @@ public class MenuScreen extends Screen {
         }
     }
 
+    private int logoClicks = 0;
+    private long logoAt = 0L;
+
+    /** 7 быстрых кликов по логотипу открывают секретные эффекты. */
+    private void logoClick() {
+        long now = System.currentTimeMillis();
+        if (now - logoAt > 1500L) logoClicks = 0;
+        logoAt = now;
+        logoClicks++;
+        click(0.8f + logoClicks * 0.1f);
+        if (logoClicks >= 7) {
+            logoClicks = 0;
+            if (!Config.secret) {
+                Config.secret = true;
+                say("Секрет открыт: монеты, алмазы и золото");
+            } else {
+                say("Секрет уже открыт");
+            }
+        }
+    }
+
     private void say(String s) {
         status = s;
         statusAt = System.currentTimeMillis();
@@ -208,6 +229,7 @@ public class MenuScreen extends Screen {
         } finally {
             RenderSystem.popMatrix();
         }
+        Fx.render(ms, minecraft, width, height); // эффекты видны и поверх меню (кнопка «Проверить»)
         if (closingAt != 0L && now - closingAt >= 150L && minecraft != null) {
             minecraft.setScreen(null);
         }
@@ -270,6 +292,7 @@ public class MenuScreen extends Screen {
         minecraft.getTextureManager().bind(Hud.LOGO);
         RenderSystem.color4f(1f, 1f, 1f, 1f);
         AbstractGui.blit(ms, px + 8, py + 6, 0f, 0f, 26, 26, 26, 26);
+        hits.add(new Hit(px + 8, py + 6, 26, 26, 830));
         ms.pushPose();
         ms.scale(0.9f, 0.9f, 1f);
         Hud.gradText(ms, font, "PrimeVisual", Math.round((px + 38) / 0.9f), Math.round((py + 14) / 0.9f));
@@ -357,6 +380,12 @@ public class MenuScreen extends Screen {
         maxScroll = Math.max(0, (end - startY) - viewH + 8);
         scrollTarget = MathHelper.clamp(scrollTarget, 0f, (float) maxScroll);
         if (scroll > maxScroll) scroll = maxScroll;
+        if (System.currentTimeMillis() - statusAt < 2500L && !status.isEmpty()) {
+            int bw = font.width(status) + 20;
+            int bx = cx + (CW - bw) / 2;
+            Hud.glassRectA(ms, bx, py + H - 30, bw, 18, 6, false, 230);
+            font.drawShadow(ms, status, bx + 10f, py + H - 25f, Hud.GREEN);
+        }
         if (maxScroll > 0) { // полоса прокрутки
             int trackX = px + W - 9;
             Hud.rr(ms, trackX, baseY, 3, viewH, 1, 0x30FFFFFF);
@@ -489,16 +518,25 @@ public class MenuScreen extends Screen {
     // ============================ Вкладка «HUD» ============================
     private int drawHudTab(MatrixStack ms, int cx, int y, int mx, int my) {
         y = section(ms, "Информация", cx, y);
-        int[] info = {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME};
+        int[] info = {Config.FPS, Config.FPSGRAPH, Config.COORDS, Config.DIR, Config.SPEED, Config.PING, Config.TIME,
+                Config.HEALTH, Config.SERVER, Config.MEMORY, Config.SESSION};
         for (int i : info) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Мир и игрок", cx, y);
-        int[] world = {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.WEATHER, Config.HUNGER, Config.COMPASS};
+        int[] world = {Config.LIGHT, Config.BIOME, Config.GAMETIME, Config.WEATHER, Config.HUNGER, Config.COMPASS, Config.LOOKAT};
         for (int i : world) y = moduleCard(ms, i, cx, y, mx, my);
+
+        y = section(ms, "Бой", cx, y);
+        int[] combat = {Config.REACH, Config.COMBO, Config.KILLS, Config.DMGNUM, Config.COOLDOWN};
+        for (int i : combat) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Интерфейс", cx, y);
         int[] ui = {Config.EFFECTS, Config.DURABILITY, Config.ITEMS, Config.TARGET, Config.WARN, Config.NOTIFY};
         for (int i : ui) y = moduleCard(ms, i, cx, y, mx, my);
+
+        y = section(ms, "Чистый экран", cx, y);
+        int[] clean = {Config.HIDEPOT, Config.HIDEBOSS, Config.HIDEVIG};
+        for (int i : clean) y = moduleCard(ms, i, cx, y, mx, my);
 
         y = section(ms, "Клавиши WASD", cx, y);
         y = moduleCard(ms, Config.KEYS, cx, y, mx, my);
@@ -617,6 +655,64 @@ public class MenuScreen extends Screen {
                 (Config.trailDensity - 1) / 5f);
         y = sliderBlock(ms, cx, y, "Размер круга прыжка", String.format(Locale.ROOT, "%.1f бл", Config.circleSize),
                 106, (Config.circleSize - 0.5f) / 2f);
+
+        y = section(ms, "Эффекты при ударе", cx, y);
+        y = moduleCard(ms, Config.HITFX, cx, y, mx, my);
+        label(ms, "Что вылетает", cx, y + 1);
+        y += 12;
+        String[] fxn = {"Доллары", "Амогусы", "Айфоны", "Микс", "Монеты", "Алмазы", "Золото"};
+        int nfx = Config.secret ? 7 : 4;
+        int fw = (CW - 3 * 4) / 4;
+        for (int k = 0; k < nfx; k++) {
+            int x = cx + (k % 4) * (fw + 4), yy = y + (k / 4) * 24;
+            if (k == Config.fxType) Hud.rr(ms, x, yy, fw, 20, 5, Hud.lerp(Config.c1(), Config.c2(), 0.5f));
+            else card(ms, x, yy, fw, 20, 5, 0xFF171822, 0xFF21222F, in(mx, my, x, yy, fw, 20) ? 1f : 0f);
+            font.drawShadow(ms, fxn[k], x + (fw - font.width(fxn[k])) / 2f, yy + 6, k >= 4 ? 0xFFFFD84A : Hud.WHITE);
+            hits.add(new Hit(x, yy, fw, 20, 470 + k));
+        }
+        y += nfx > 4 ? 52 : 28;
+        y = sliderBlock(ms, cx, y, "Количество", String.valueOf(Config.fxCount), 117, (Config.fxCount - 3) / 17f);
+        y = sliderBlock(ms, cx, y, "Размер", Math.round(Config.fxSize * 100) + "%", 118, (Config.fxSize - 0.5f) / 1.5f);
+        y = moduleCard(ms, Config.KILLFX, cx, y, mx, my);
+        y = moduleCard(ms, Config.HITSND, cx, y, mx, my);
+        label(ms, "Звук", cx, y + 1);
+        y += 12;
+        String[] snn = {"Pay", "Cash", "Pop", "Boing", "Bell"};
+        int sw5 = (CW - 4 * 4) / 5;
+        for (int k = 0; k < 5; k++) {
+            int x = cx + k * (sw5 + 4);
+            if (k == Config.hitSound) Hud.rr(ms, x, y, sw5, 20, 5, Hud.lerp(Config.c1(), Config.c2(), 0.5f));
+            else card(ms, x, y, sw5, 20, 5, 0xFF171822, 0xFF21222F, in(mx, my, x, y, sw5, 20) ? 1f : 0f);
+            font.drawShadow(ms, snn[k], x + (sw5 - font.width(snn[k])) / 2f, y + 6, Hud.WHITE);
+            hits.add(new Hit(x, y, sw5, 20, 480 + k));
+        }
+        y += 26;
+        y = sliderBlock(ms, cx, y, "Громкость звука", Math.round(Config.hitVolume * 100) + "%", 119, (Config.hitVolume - 0.1f) / 0.9f);
+        button(ms, cx, y, CW, 22, "Проверить эффект и звук", 822, mx, my);
+        y += 30;
+
+        y = section(ms, "Экранные эффекты", cx, y);
+        y = moduleCard(ms, Config.VIGNETTE, cx, y, mx, my);
+        label(ms, "Цвет виньетки", cx, y + 1);
+        y = colorChips(ms, cx, y + 12, new String[]{"Акцент", "Тёмная", "Радуга"}, Config.vigColor, 490, mx, my);
+        y = moduleCard(ms, Config.LOWHP, cx, y, mx, my);
+        y = moduleCard(ms, Config.SPEEDLINES, cx, y, mx, my);
+
+        y = section(ms, "Мир (только у вас на экране)", cx, y);
+        y = moduleCard(ms, Config.TIMECHG, cx, y, mx, my);
+        String tod = String.format(Locale.ROOT, "%02d:%02d", (Config.timeOfDay / 1000 + 6) % 24, (Config.timeOfDay % 1000) * 60 / 1000);
+        y = sliderBlock(ms, cx, y, "Время суток", tod, 120, Config.timeOfDay / 24000f);
+        y = moduleCard(ms, Config.NORAIN, cx, y, mx, my);
+        y = moduleCard(ms, Config.NOFIRE, cx, y, mx, my);
+
+        y = section(ms, "Камера и руки", cx, y);
+        y = moduleCard(ms, Config.SHAKE, cx, y, mx, my);
+        y = sliderBlock(ms, cx, y, "Сила тряски", String.format(Locale.ROOT, "×%.1f", Config.shakeAmp), 121, (Config.shakeAmp - 0.2f) / 1.3f);
+        y = moduleCard(ms, Config.VIEWMODEL, cx, y, mx, my);
+        y = sliderBlock(ms, cx, y, "Руки: влево / вправо", String.format(Locale.ROOT, "%+.2f", Config.handX), 122, Config.handX + 0.5f);
+        y = sliderBlock(ms, cx, y, "Руки: вниз / вверх", String.format(Locale.ROOT, "%+.2f", Config.handY), 123, Config.handY + 0.5f);
+        y = sliderBlock(ms, cx, y, "Руки: ближе / дальше", String.format(Locale.ROOT, "%+.2f", Config.handZ), 124, Config.handZ + 0.5f);
+        y = sliderBlock(ms, cx, y, "Размер рук", Math.round(Config.handScale * 100) + "%", 125, Config.handScale - 0.5f);
 
         y = section(ms, "Косметика (видите только вы)", cx, y);
         y = moduleCard(ms, Config.CAPE, cx, y, mx, my);
@@ -847,6 +943,15 @@ public class MenuScreen extends Screen {
             case 114: Config.hatScale = Math.round((0.7f + frac * 0.8f) * 20f) / 20f; break;
             case 115: Config.haloScale = Math.round((0.6f + frac) * 20f) / 20f; break;
             case 116: Config.haloHeight = Math.round(frac * 0.3f * 100f) / 100f; break;
+            case 117: Config.fxCount = 3 + Math.round(frac * 17f); break;
+            case 118: Config.fxSize = Math.round((0.5f + frac * 1.5f) * 20f) / 20f; break;
+            case 119: Config.hitVolume = Math.round((0.1f + frac * 0.9f) * 20f) / 20f; break;
+            case 120: Config.timeOfDay = Math.round(frac * 240f) * 100; break;
+            case 121: Config.shakeAmp = Math.round((0.2f + frac * 1.3f) * 10f) / 10f; break;
+            case 122: Config.handX = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 123: Config.handY = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 124: Config.handZ = Math.round((frac - 0.5f) * 100f) / 100f; break;
+            case 125: Config.handScale = Math.round((0.5f + frac) * 20f) / 20f; break;
             default: break;
         }
     }
@@ -879,7 +984,7 @@ public class MenuScreen extends Screen {
         if (id < Config.ON.length) {
             Config.ON[id] = !Config.ON[id];
             click(Config.ON[id] ? 1.3f : 0.8f);
-        } else if (id >= 100 && id <= 116) {
+        } else if (id >= 100 && id <= 125) {
             drag = id;
             setSlider(id, lx);
         } else if (id >= 200 && id < 200 + TABS.length) {
@@ -906,6 +1011,20 @@ public class MenuScreen extends Screen {
         } else if (id >= 450 && id < 459) {
             Config.hbColor = id - 450;
             click(1.1f);
+        } else if (id >= 470 && id < 477) {
+            Config.fxType = id - 470;
+            click(1.1f);
+        } else if (id >= 480 && id < 485) {
+            Config.hitSound = id - 480;
+            Fx.playSound(minecraft, 1f);
+        } else if (id >= 490 && id < 493) {
+            Config.vigColor = id - 490;
+            click(1.1f);
+        } else if (id == 822) {
+            Fx.burst(minecraft, Config.fxCount);
+            Fx.playSound(minecraft, 1f);
+        } else if (id == 830) {
+            logoClick();
         } else if (id >= 460 && id < 463) {
             Config.hatColor = id - 460;
             click(1.1f);

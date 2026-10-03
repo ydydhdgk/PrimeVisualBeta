@@ -23,6 +23,8 @@ import net.minecraft.particles.ParticleTypes;
 import net.minecraft.particles.RedstoneParticleData;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
+import net.minecraftforge.client.event.RenderBlockOverlayEvent;
+import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraft.util.text.TextFormatting;
@@ -72,12 +74,17 @@ public class ClientEvents {
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent e) {
+        if (Safe.off("onTick")) return;
+        try {
         if (e.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getInstance();
         while (MENU.consumeClick()) {
             if (mc.screen == null && mc.player != null) mc.setScreen(new MenuScreen());
         }
         tickExtras(mc);
+        } catch (Throwable t) {
+            Safe.fail("onTick", t);
+        }
     }
 
     private static IParticleData particle(int t) {
@@ -131,6 +138,13 @@ public class ClientEvents {
             savedGamma = -1.0;
         }
 
+        if (mc.level != null) { // клиентское время суток и погода
+            if (Config.ON[Config.TIMECHG]) mc.level.setDayTime((long) Config.timeOfDay);
+            if (Config.ON[Config.NORAIN]) {
+                mc.level.setRainLevel(0f);
+                mc.level.setThunderLevel(0f);
+            }
+        }
         boolean zoomNow = Config.ON[Config.CINEZOOM] && ZOOM.isDown();
         if (zoomNow != cineState) {
             mc.options.smoothCamera = zoomNow;
@@ -164,6 +178,7 @@ public class ClientEvents {
             return;
         }
         assist(mc, p);
+        Fx.track(mc);
         boolean onGround = p.isOnGround();
         Vector3d v = p.getDeltaMovement();
         if (!mc.isPaused()) {
@@ -203,22 +218,34 @@ public class ClientEvents {
 
     @SubscribeEvent
     public void onFov(EntityViewRenderEvent.FOVModifier e) {
+        if (Safe.off("onFov")) return;
+        try {
         float target = ZOOM.isDown() ? (float) Config.zoom : 1f;
         zoomCurrent += (target - zoomCurrent) * 0.2f; // плавный вход/выход
         if (Math.abs(zoomCurrent - 1f) > 0.001f) e.setFOV(e.getFOV() * zoomCurrent);
+        } catch (Throwable t) {
+            Safe.fail("onFov", t);
+        }
     }
 
     @SubscribeEvent
     public void onScroll(InputEvent.MouseScrollEvent e) {
+        if (Safe.off("onScroll")) return;
+        try {
         if (ZOOM.isDown()) { // колесо при зуме меняет силу приближения
             Config.zoom = MathHelper.clamp(Config.zoom - e.getScrollDelta() * 0.03, 0.05, 0.6);
             e.setCanceled(true);
+        }
+        } catch (Throwable t) {
+            Safe.fail("onScroll", t);
         }
     }
 
     /** Бинды и клавиши мода. Команды отправляются только по нажатию (пауза 0,4 с). */
     @SubscribeEvent
     public void onKey(InputEvent.KeyInputEvent e) {
+        if (Safe.off("onKey")) return;
+        try {
         if (e.getAction() != GLFW.GLFW_PRESS) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null) return;
@@ -245,17 +272,28 @@ public class ClientEvents {
                 break;
             }
         }
+        } catch (Throwable t) {
+            Safe.fail("onKey", t);
+        }
     }
 
     @SubscribeEvent
     public void onMouse(InputEvent.MouseInputEvent e) {
+        if (Safe.off("onMouse")) return;
+        try {
         if (e.getAction() != GLFW.GLFW_PRESS || Minecraft.getInstance().screen != null) return;
         long now = System.currentTimeMillis();
         if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             LEFT.addLast(now);
-            if (Minecraft.getInstance().crosshairPickEntity != null) Hud.hitTime = now; // для хит-маркера
+            if (Minecraft.getInstance().crosshairPickEntity != null) {
+                Hud.hitTime = now; // для хит-маркера
+                Fx.onHit(Minecraft.getInstance());
+            }
         }
         if (e.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) RIGHT.addLast(now);
+        } catch (Throwable t) {
+            Safe.fail("onMouse", t);
+        }
     }
 
     // ======================= Анимации =======================
@@ -279,8 +317,16 @@ public class ClientEvents {
     /** Прячем ванильный прицел, если включён свой; плавный въезд списка игроков (Tab). */
     @SubscribeEvent
     public void onOverlayPre(RenderGameOverlayEvent.Pre e) {
+        if (Safe.off("onOverlayPre")) return;
+        try {
         RenderGameOverlayEvent.ElementType type = e.getType();
         if (type == RenderGameOverlayEvent.ElementType.CROSSHAIRS && Config.ON[Config.CROSSHAIR]) {
+            e.setCanceled(true);
+            return;
+        }
+        if ((type == RenderGameOverlayEvent.ElementType.POTION_ICONS && Config.ON[Config.HIDEPOT])
+                || (type == RenderGameOverlayEvent.ElementType.BOSSINFO && Config.ON[Config.HIDEBOSS])
+                || (type == RenderGameOverlayEvent.ElementType.VIGNETTE && Config.ON[Config.HIDEVIG])) {
             e.setCanceled(true);
             return;
         }
@@ -295,10 +341,15 @@ public class ClientEvents {
                 tabPushed = true;
             }
         }
+        } catch (Throwable t) {
+            Safe.fail("onOverlayPre", t);
+        }
     }
 
     @SubscribeEvent
     public void onChatReceived(ClientChatReceivedEvent e) {
+        if (Safe.off("onChatReceived")) return;
+        try {
         long now = System.currentTimeMillis();
         chatAnim = now;
         ITextComponent msg = e.getMessage();
@@ -316,18 +367,28 @@ public class ClientEvents {
                     .withStyle(TextFormatting.GRAY).append(msg);
         }
         if (msg != e.getMessage()) e.setMessage(msg);
+        } catch (Throwable t) {
+            Safe.fail("onChatReceived", t);
+        }
     }
 
     /** Плавный сдвиг чата: при новом сообщении блок «выезжает» снизу. */
     @SubscribeEvent
     public void onChatPos(RenderGameOverlayEvent.Chat e) {
+        if (Safe.off("onChatPos")) return;
+        try {
         if (!Config.ON[Config.ANIM_CHAT]) return;
         float k = ease((System.currentTimeMillis() - chatAnim) / dur(180f));
         if (k < 1f) e.setPosY(e.getPosY() + Math.round(9f * (1f - k)));
+        } catch (Throwable t) {
+            Safe.fail("onChatPos", t);
+        }
     }
 
     @SubscribeEvent
     public void onOverlayPost(RenderGameOverlayEvent.Post e) {
+        if (Safe.off("onOverlayPost")) return;
+        try {
         RenderGameOverlayEvent.ElementType type = e.getType();
         if (type == RenderGameOverlayEvent.ElementType.PLAYER_LIST && tabPushed) {
             e.getMatrixStack().popPose();
@@ -344,6 +405,9 @@ public class ClientEvents {
             tabPushed = false;
         }
         Hud.render(e.getMatrixStack(), e.getWindow().getGuiScaledWidth(), e.getWindow().getGuiScaledHeight());
+        } catch (Throwable t) {
+            Safe.fail("onOverlayPost", t);
+        }
     }
 
     /** Скользящая подсветка выбранного слота хотбара. */
@@ -363,6 +427,8 @@ public class ClientEvents {
     /** Плавное открытие окон (инвентарь, меню паузы и т.д.). */
     @SubscribeEvent
     public void onScreenPre(GuiScreenEvent.DrawScreenEvent.Pre e) {
+        if (Safe.off("onScreenPre")) return;
+        try {
         if (!Config.ON[Config.ANIM_GUI]) return;
         Screen sc = e.getGui();
         if (sc instanceof MenuScreen || sc instanceof HudEditorScreen || sc instanceof ChatScreen) return;
@@ -380,20 +446,78 @@ public class ClientEvents {
         RenderSystem.scalef(s, s, 1f);
         RenderSystem.translatef(-cx, -cy, 0f);
         guiPushed = true;
+        } catch (Throwable t) {
+            Safe.fail("onScreenPre", t);
+        }
     }
 
     @SubscribeEvent
     public void onScreenPost(GuiScreenEvent.DrawScreenEvent.Post e) {
+        if (Safe.off("onScreenPost")) return;
+        try {
         if (guiPushed) {
             RenderSystem.popMatrix();
             guiPushed = false;
+        }
+        } catch (Throwable t) {
+            Safe.fail("onScreenPost", t);
+        }
+    }
+
+    /** Тряска камеры при ударе и получении урона. */
+    @SubscribeEvent
+    public void onCamera(EntityViewRenderEvent.CameraSetup e) {
+        if (!Config.ON[Config.SHAKE] || Safe.off("onCamera")) return;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            long now = System.currentTimeMillis();
+            float k = 0f;
+            long dt = now - Fx.shakeAt;
+            if (dt < 350L) {
+                float q = 1f - dt / 350f;
+                k = q * q;
+            }
+            if (mc.player != null && mc.player.hurtTime > 0) k = Math.max(k, mc.player.hurtTime / 10f);
+            if (k > 0f) {
+                float a = Config.shakeAmp * k;
+                e.setRoll(e.getRoll() + (float) Math.sin(now * 0.06) * 3f * a);
+                e.setPitch(e.getPitch() + (float) Math.sin(now * 0.09) * 0.8f * a);
+            }
+        } catch (Throwable t) {
+            Safe.fail("onCamera", t);
+        }
+    }
+
+    /** Положение и размер рук / предмета. */
+    @SubscribeEvent
+    public void onHand(RenderHandEvent e) {
+        if (!Config.ON[Config.VIEWMODEL] || Safe.off("onHand")) return;
+        try {
+            MatrixStack ms = e.getMatrixStack();
+            ms.translate(Config.handX, Config.handY, Config.handZ);
+            ms.scale(Config.handScale, Config.handScale, Config.handScale);
+        } catch (Throwable t) {
+            Safe.fail("onHand", t);
+        }
+    }
+
+    /** Без огня перед глазами. */
+    @SubscribeEvent
+    public void onBlockOverlay(RenderBlockOverlayEvent e) {
+        if (Config.ON[Config.NOFIRE] && e.getOverlayType() == RenderBlockOverlayEvent.OverlayType.FIRE) {
+            e.setCanceled(true);
         }
     }
 
     /** Косметика: плащ, шляпа, нимб. */
     @SubscribeEvent
     public void onPlayerPost(RenderPlayerEvent.Post e) {
+        if (Safe.off("onPlayerPost")) return;
+        try {
         Cosmetics.render(e);
+        } catch (Throwable t) {
+            Safe.fail("onPlayerPost", t);
+        }
     }
 
     // ======================= Цветные хитбоксы =======================
@@ -405,6 +529,8 @@ public class ClientEvents {
     /** Игроки и мобы: рамка рисуется в том же проходе, что и сама сущность (как ванильный F3+B). */
     @SubscribeEvent
     public void onLivingPost(RenderLivingEvent.Post<?, ?> e) {
+        if (Safe.off("onLivingPost")) return;
+        try {
         if (!Config.ON[Config.HITBOX]) return;
         LivingEntity le = e.getEntity();
         boolean player = le instanceof PlayerEntity;
@@ -421,11 +547,16 @@ public class ClientEvents {
             AxisAlignedBB line = new AxisAlignedBB(bb.minX, eye - 0.01, bb.minZ, bb.maxX, eye + 0.01, bb.maxZ);
             WorldRenderer.renderLineBox(e.getMatrixStack(), vb, line, 1f, 0f, 0f, 1f);
         }
+        } catch (Throwable t) {
+            Safe.fail("onLivingPost", t);
+        }
     }
 
     /** Предметы и прочие сущности (стрелы, лодки и т.д.). Рисуются с проверкой глубины, за блоками не видны. */
     @SubscribeEvent
     public void onWorldLast(RenderWorldLastEvent e) {
+        if (Safe.off("onWorldLast")) return;
+        try {
         if (!Config.ON[Config.HITBOX] || !(Config.hbItems || Config.hbOthers)) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return;
@@ -449,5 +580,8 @@ public class ClientEvents {
             WorldRenderer.renderLineBox(ms, vb, bb, c[0], c[1], c[2], 1.0f);
         }
         buf.endBatch(RenderType.lines());
+        } catch (Throwable t) {
+            Safe.fail("onWorldLast", t);
+        }
     }
 }
