@@ -40,6 +40,16 @@ processResources {
     from('cape.png') { into 'assets/visuals/textures' }
     from('hat.png') { into 'assets/visuals/textures' }
     from('halo.png') { into 'assets/visuals/textures' }
+    ['dollar', 'amogus', 'iphone', 'coin', 'diamond'].each { n ->
+        from("fx_${n}.png") {
+            into 'assets/visuals/textures/fx'
+            rename { String f -> n + '.png' }
+        }
+    }
+    ['pay', 'cash', 'pop', 'boing', 'bell'].each { n ->
+        from("hit_${n}.ogg") { into 'assets/visuals/sounds' }
+    }
+    from('sounds.json') { into 'assets/visuals' }
     (0..5).each { i ->
         from("panorama_${i}.png") { into 'assets/minecraft/textures/gui/title/background' }
     }

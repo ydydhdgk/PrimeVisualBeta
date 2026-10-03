@@ -77,12 +77,15 @@ public class Cosmetics {
             float headYaw = MathHelper.rotLerp(pt, p.yHeadRotO, p.yHeadRot);
             float pitch = MathHelper.lerp(pt, p.xRotO, p.xRot);
             ms.pushPose();
-            ms.translate(0.0, crouch ? 1.3 : 1.5, 0.0);
-            ms.mulPose(Vector3f.YP.rotationDegrees(-headYaw));
-            ms.mulPose(Vector3f.XP.rotationDegrees(pitch));
-            if (hat) drawHat(ms, buf, light);
-            if (halo) drawHalo(ms, buf);
-            ms.popPose();
+            try {
+                ms.translate(0.0, crouch ? 1.3 : 1.5, 0.0);
+                ms.mulPose(Vector3f.YP.rotationDegrees(-headYaw));
+                ms.mulPose(Vector3f.XP.rotationDegrees(pitch));
+                if (hat) drawHat(ms, buf, light);
+                if (halo) drawHalo(ms, buf);
+            } finally {
+                ms.popPose();
+            }
         }
     }
 
@@ -98,6 +101,7 @@ public class Cosmetics {
         float ang = 6f + capeSwing + (crouch ? 25f : 0f) + (float) Math.sin((p.tickCount + pt) * 0.18) * 1.5f;
 
         ms.pushPose();
+        try {
         ms.mulPose(Vector3f.YP.rotationDegrees(-bodyYaw));
         ms.translate(0.0, crouch ? 1.32 : 1.5, -0.125);
         ms.mulPose(Vector3f.XP.rotationDegrees(ang));
@@ -125,7 +129,9 @@ public class Cosmetics {
         quad(vb, m, n, light, 1f, 1f, 1f, 0f, -1f, 0f,
                 new float[]{hx, -h, -t, s, s}, new float[]{-hx, -h, -t, s, s},
                 new float[]{-hx, -h, 0, s, s}, new float[]{hx, -h, 0, s, s});
-        ms.popPose();
+        } finally {
+            ms.popPose();
+        }
     }
 
     // ---------- китайская шляпа (конус) ----------

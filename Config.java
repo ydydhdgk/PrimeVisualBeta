@@ -24,11 +24,7 @@ public class Config {
             "Цветные хитбоксы", "Анимация чата", "Анимация таба", "Анимация окон", "Плавный хотбар",
             "Авто-спринт", "Яркость", "Точка смерти", "Время в чате", "Кинокамера при зуме", "Погода", "Голод",
             "Калькулятор", "Свой плащ", "Китайская шляпа", "Нимб",
-            "Эффекты при ударе", "Эффект убийства", "Звук при ударе", "Виньетка", "Красные края при низком HP", "Линии скорости",
-            "Здоровье и броня", "Сервер", "Память", "Время в игре", "Дистанция удара", "Комбо ударов",
-            "Убийства", "Что под прицелом", "Время суток", "Без дождя", "Без огня на экране", "Тряска камеры",
-            "Положение рук", "Цифры урона", "Скрыть иконки эффектов", "Скрыть боссбар", "Скрыть виньетку игры",
-            "Кулдауны"
+            "Эффекты при ударе", "Эффект убийства", "Звук при ударе", "Виньетка", "Красные края при низком HP", "Линии скорости"
     };
     public static final String[] DESCS = {
             "Кадры в секунду", "Позиция XYZ", "Сторона света и угол", "Блоков в секунду", "Задержка до сервера",
@@ -49,13 +45,7 @@ public class Config {
             "Светящееся кольцо над головой",
             "Доллары, амогусы, айфоны вылетают из прицела", "Салют из эффектов, когда цель побеждена",
             "Звон, поп и другие звуки при ударе", "Мягкое затемнение краёв экрана",
-            "Пульсация при здоровье 3 сердца и ниже", "Полосы по краям экрана при беге",
-            "Здоровье, поглощение и очки брони", "Адрес сервера и число игроков", "Использование памяти игрой",
-            "Сколько вы играете в этой сессии", "Расстояние до цели при ударе", "Сколько ударов подряд без урона",
-            "Победы над целями за сессию", "Название блока, на который вы смотрите", "Своё время суток только на вашем экране",
-            "Дождь и гроза не видны", "Не показывать огонь перед глазами", "Тряска при ударе и получении урона",
-            "Сдвиг и размер рук и предмета", "Всплывающие цифры урона по цели", "Свои иконки эффектов уже есть",
-            "Убрать полосы боссов сверху", "Убрать ванильное затемнение краёв", "Жемчуг, хорус и щит: оставшееся время"
+            "Пульсация при здоровье 3 сердца и ниже", "Полосы по краям экрана при беге"
     };
     public static final int FPS = 0, COORDS = 1, DIR = 2, SPEED = 3, PING = 4, LIGHT = 5,
             TIME = 6, EFFECTS = 7, DURABILITY = 8, KEYS = 9, CROSSHAIR = 10, TARGET = 11, WATERMARK = 12,
@@ -65,10 +55,7 @@ public class Config {
             HITBOX = 26, ANIM_CHAT = 27, ANIM_TAB = 28, ANIM_GUI = 29, ANIM_HOTBAR = 30,
             SPRINT = 31, BRIGHT = 32, DEATHPOINT = 33, CHATTIME = 34, CINEZOOM = 35, WEATHER = 36, HUNGER = 37,
             CALC = 38, CAPE = 39, HAT = 40, HALO = 41,
-            HITFX = 42, KILLFX = 43, HITSND = 44, VIGNETTE = 45, LOWHP = 46, SPEEDLINES = 47,
-            HEALTH = 48, SERVER = 49, MEMORY = 50, SESSION = 51, REACH = 52, COMBO = 53, KILLS = 54, LOOKAT = 55,
-            TIMECHG = 56, NORAIN = 57, NOFIRE = 58, SHAKE = 59, VIEWMODEL = 60, DMGNUM = 61, HIDEPOT = 62,
-            HIDEBOSS = 63, HIDEVIG = 64, COOLDOWN = 65;
+            HITFX = 42, KILLFX = 43, HITSND = 44, VIGNETTE = 45, LOWHP = 46, SPEEDLINES = 47;
 
     public static final boolean[] ON = new boolean[NAMES.length];
 
@@ -117,8 +104,6 @@ public class Config {
     public static int hatColor = 0, haloColor = 0;
     public static int fxType = 0, fxCount = 8, hitSound = 0, vigColor = 0;
     public static float fxSize = 1f, hitVolume = 0.8f;
-    public static int timeOfDay = 6000;
-    public static float shakeAmp = 1f, handX = 0f, handY = 0f, handZ = 0f, handScale = 1f;
     public static boolean secret = false; // открывается 7 кликами по логотипу
     public static float hatScale = 1f, haloScale = 1f, haloHeight = 0f;
     public static float brightness = 10f;
@@ -130,8 +115,8 @@ public class Config {
     public static int autoInterval = 60;
     public static double zoom = 0.25;
     // смещения элементов HUD (редактор позиций)
-    public static final int[] offX = new int[12];
-    public static final int[] offY = new int[12];
+    public static final int[] offX = new int[10];
+    public static final int[] offY = new int[10];
 
     static {
         Arrays.fill(bindKey, -1);
@@ -219,12 +204,6 @@ public class Config {
         vigColor = 0;
         fxSize = 1f;
         hitVolume = 0.8f;
-        timeOfDay = 6000;
-        shakeAmp = 1f;
-        handX = 0f;
-        handY = 0f;
-        handZ = 0f;
-        handScale = 1f;
         zoom = 0.25;
     }
 
@@ -338,12 +317,6 @@ public class Config {
             p.setProperty("hitvol", String.valueOf(hitVolume));
             p.setProperty("vigcolor", String.valueOf(vigColor));
             p.setProperty("secret", String.valueOf(secret));
-            p.setProperty("timeofday", String.valueOf(timeOfDay));
-            p.setProperty("shakeamp", String.valueOf(shakeAmp));
-            p.setProperty("handx", String.valueOf(handX));
-            p.setProperty("handy", String.valueOf(handY));
-            p.setProperty("handz", String.valueOf(handZ));
-            p.setProperty("handscale", String.valueOf(handScale));
             p.setProperty("hatcolor", String.valueOf(hatColor));
             p.setProperty("halocolor", String.valueOf(haloColor));
             p.setProperty("hatscale", String.valueOf(hatScale));
@@ -420,12 +393,6 @@ public class Config {
             hitVolume = getf(p, "hitvol", hitVolume, 0.1f, 1f);
             vigColor = geti(p, "vigcolor", vigColor, 0, 2);
             secret = getb(p, "secret", secret);
-            timeOfDay = geti(p, "timeofday", timeOfDay, 0, 24000);
-            shakeAmp = getf(p, "shakeamp", shakeAmp, 0.2f, 1.5f);
-            handX = getf(p, "handx", handX, -0.5f, 0.5f);
-            handY = getf(p, "handy", handY, -0.5f, 0.5f);
-            handZ = getf(p, "handz", handZ, -0.5f, 0.5f);
-            handScale = getf(p, "handscale", handScale, 0.5f, 1.5f);
             hatColor = geti(p, "hatcolor", hatColor, 0, 2);
             haloColor = geti(p, "halocolor", haloColor, 0, 2);
             hatScale = getf(p, "hatscale", hatScale, 0.7f, 1.5f);

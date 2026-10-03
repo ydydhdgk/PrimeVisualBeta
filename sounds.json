@@ -1,0 +1,7 @@
+{
+  "hit_pay": {"category": "player", "sounds": ["visuals:hit_pay"]},
+  "hit_cash": {"category": "player", "sounds": ["visuals:hit_cash"]},
+  "hit_pop": {"category": "player", "sounds": ["visuals:hit_pop"]},
+  "hit_boing": {"category": "player", "sounds": ["visuals:hit_boing"]},
+  "hit_bell": {"category": "player", "sounds": ["visuals:hit_bell"]}
+}
