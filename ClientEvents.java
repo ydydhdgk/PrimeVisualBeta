@@ -52,13 +52,14 @@ public class ClientEvents {
     private static long lastBind = 0L;
     private static long lastAuto = 0L;
     private static boolean wasOnGround = true;
+    private static boolean welcomed = false;
     private static String calcAnswer = null;
     private static long calcTime = 0L;
     private static double savedGamma = -1.0;
     private static boolean sprintForced = false, cineState = false, deathHandled = false;
     private static double lastX, lastY, lastZ;
     private static final DateTimeFormatter CHAT_TIME = DateTimeFormatter.ofPattern("HH:mm");
-    private static float zoomCurrent = 1f; // плавное значение FOV-множителя
+    static float zoomCurrent = 1f; // плавное значение FOV-множителя
     private static final ArrayDeque<Long> LEFT = new ArrayDeque<>();
     private static final ArrayDeque<Long> RIGHT = new ArrayDeque<>();
 
@@ -82,6 +83,15 @@ public class ClientEvents {
             if (mc.screen == null && mc.player != null) mc.setScreen(new MenuScreen());
         }
         tickExtras(mc);
+        RenderHooks.update();
+        if (mc.player != null && mc.level != null) {
+            if (!welcomed) {
+                welcomed = true;
+                mc.gui.getChat().addMessage(new StringTextComponent("[PrimeVisual] загружен. Меню: Right Shift"));
+            }
+        } else {
+            welcomed = false;
+        }
         } catch (Throwable t) {
             Safe.fail("onTick", t);
         }
@@ -217,18 +227,6 @@ public class ClientEvents {
     }
 
     @SubscribeEvent
-    public void onFov(EntityViewRenderEvent.FOVModifier e) {
-        if (Safe.off("onFov")) return;
-        try {
-        float target = ZOOM.isDown() ? (float) Config.zoom : 1f;
-        zoomCurrent += (target - zoomCurrent) * 0.2f; // плавный вход/выход
-        if (Math.abs(zoomCurrent - 1f) > 0.001f) e.setFOV(e.getFOV() * zoomCurrent);
-        } catch (Throwable t) {
-            Safe.fail("onFov", t);
-        }
-    }
-
-    @SubscribeEvent
     public void onScroll(InputEvent.MouseScrollEvent e) {
         if (Safe.off("onScroll")) return;
         try {
@@ -300,9 +298,6 @@ public class ClientEvents {
     private static long chatAnim = 0L;
     private static long tabStart = 0L, tabLastSeen = 0L;
     private static boolean tabPushed = false;
-    private static Screen animScreen;
-    private static long animStart = 0L;
-    private static boolean guiPushed = false;
     private static float hotbarPos = 0f;
 
     private static float ease(float t) {
@@ -424,164 +419,5 @@ public class ClientEvents {
         Hud.rrOutline(ms, x, y, 24, 24, 4, Config.c2());
     }
 
-    /** Плавное открытие окон (инвентарь, меню паузы и т.д.). */
-    @SubscribeEvent
-    public void onScreenPre(GuiScreenEvent.DrawScreenEvent.Pre e) {
-        if (Safe.off("onScreenPre")) return;
-        try {
-        if (!Config.ON[Config.ANIM_GUI]) return;
-        Screen sc = e.getGui();
-        if (sc instanceof MenuScreen || sc instanceof HudEditorScreen || sc instanceof ChatScreen) return;
-        long now = System.currentTimeMillis();
-        if (sc != animScreen) {
-            animScreen = sc;
-            animStart = now;
-        }
-        float k = ease((now - animStart) / dur(170f));
-        if (k >= 1f) return;
-        float s = 0.95f + 0.05f * k;
-        float cx = sc.width / 2f, cy = sc.height / 2f;
-        RenderSystem.pushMatrix();
-        RenderSystem.translatef(cx, cy, 0f);
-        RenderSystem.scalef(s, s, 1f);
-        RenderSystem.translatef(-cx, -cy, 0f);
-        guiPushed = true;
-        } catch (Throwable t) {
-            Safe.fail("onScreenPre", t);
-        }
-    }
-
-    @SubscribeEvent
-    public void onScreenPost(GuiScreenEvent.DrawScreenEvent.Post e) {
-        if (Safe.off("onScreenPost")) return;
-        try {
-        if (guiPushed) {
-            RenderSystem.popMatrix();
-            guiPushed = false;
-        }
-        } catch (Throwable t) {
-            Safe.fail("onScreenPost", t);
-        }
-    }
-
-    /** Тряска камеры при ударе и получении урона. */
-    @SubscribeEvent
-    public void onCamera(EntityViewRenderEvent.CameraSetup e) {
-        if (!Config.ON[Config.SHAKE] || Safe.off("onCamera")) return;
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            long now = System.currentTimeMillis();
-            float k = 0f;
-            long dt = now - Fx.shakeAt;
-            if (dt < 350L) {
-                float q = 1f - dt / 350f;
-                k = q * q;
-            }
-            if (mc.player != null && mc.player.hurtTime > 0) k = Math.max(k, mc.player.hurtTime / 10f);
-            if (k > 0f) {
-                float a = Config.shakeAmp * k;
-                e.setRoll(e.getRoll() + (float) Math.sin(now * 0.06) * 3f * a);
-                e.setPitch(e.getPitch() + (float) Math.sin(now * 0.09) * 0.8f * a);
-            }
-        } catch (Throwable t) {
-            Safe.fail("onCamera", t);
-        }
-    }
-
-    /** Положение и размер рук / предмета. */
-    @SubscribeEvent
-    public void onHand(RenderHandEvent e) {
-        if (!Config.ON[Config.VIEWMODEL] || Safe.off("onHand")) return;
-        try {
-            MatrixStack ms = e.getMatrixStack();
-            ms.translate(Config.handX, Config.handY, Config.handZ);
-            ms.scale(Config.handScale, Config.handScale, Config.handScale);
-        } catch (Throwable t) {
-            Safe.fail("onHand", t);
-        }
-    }
-
-    /** Без огня перед глазами. */
-    @SubscribeEvent
-    public void onBlockOverlay(RenderBlockOverlayEvent e) {
-        if (Config.ON[Config.NOFIRE] && e.getOverlayType() == RenderBlockOverlayEvent.OverlayType.FIRE) {
-            e.setCanceled(true);
-        }
-    }
-
-    /** Косметика: плащ, шляпа, нимб. */
-    @SubscribeEvent
-    public void onPlayerPost(RenderPlayerEvent.Post e) {
-        if (Safe.off("onPlayerPost")) return;
-        try {
-        Cosmetics.render(e);
-        } catch (Throwable t) {
-            Safe.fail("onPlayerPost", t);
-        }
-    }
-
     // ======================= Цветные хитбоксы =======================
-    private static float[] hbRgb() {
-        int col = Hud.hitboxColor(Config.hbColor);
-        return new float[]{((col >> 16) & 255) / 255f, ((col >> 8) & 255) / 255f, (col & 255) / 255f};
-    }
-
-    /** Игроки и мобы: рамка рисуется в том же проходе, что и сама сущность (как ванильный F3+B). */
-    @SubscribeEvent
-    public void onLivingPost(RenderLivingEvent.Post<?, ?> e) {
-        if (Safe.off("onLivingPost")) return;
-        try {
-        if (!Config.ON[Config.HITBOX]) return;
-        LivingEntity le = e.getEntity();
-        boolean player = le instanceof PlayerEntity;
-        if (!((player && Config.hbPlayers) || (!player && Config.hbMobs))) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        if (le.distanceToSqr(mc.player) > (double) Config.hbRange * Config.hbRange) return;
-        float[] c = hbRgb();
-        IVertexBuilder vb = e.getBuffers().getBuffer(RenderType.lines());
-        AxisAlignedBB bb = le.getBoundingBox().move(-le.getX(), -le.getY(), -le.getZ());
-        WorldRenderer.renderLineBox(e.getMatrixStack(), vb, bb, c[0], c[1], c[2], 1.0f);
-        if (Config.hbEye) {
-            float eye = le.getEyeHeight();
-            AxisAlignedBB line = new AxisAlignedBB(bb.minX, eye - 0.01, bb.minZ, bb.maxX, eye + 0.01, bb.maxZ);
-            WorldRenderer.renderLineBox(e.getMatrixStack(), vb, line, 1f, 0f, 0f, 1f);
-        }
-        } catch (Throwable t) {
-            Safe.fail("onLivingPost", t);
-        }
-    }
-
-    /** Предметы и прочие сущности (стрелы, лодки и т.д.). Рисуются с проверкой глубины, за блоками не видны. */
-    @SubscribeEvent
-    public void onWorldLast(RenderWorldLastEvent e) {
-        if (Safe.off("onWorldLast")) return;
-        try {
-        if (!Config.ON[Config.HITBOX] || !(Config.hbItems || Config.hbOthers)) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null) return;
-        MatrixStack ms = e.getMatrixStack();
-        float pt = e.getPartialTicks();
-        Vector3d cam = mc.gameRenderer.getMainCamera().getPosition();
-        IRenderTypeBuffer.Impl buf = mc.renderBuffers().bufferSource();
-        IVertexBuilder vb = buf.getBuffer(RenderType.lines());
-        float[] c = hbRgb();
-        double range2 = (double) Config.hbRange * Config.hbRange;
-        for (Entity en : mc.level.entitiesForRendering()) {
-            if (en instanceof LivingEntity) continue;
-            boolean item = en instanceof ItemEntity;
-            if (!((item && Config.hbItems) || (!item && Config.hbOthers))) continue;
-            if (en.distanceToSqr(mc.player) > range2) continue;
-            double ix = MathHelper.lerp(pt, en.xo, en.getX());
-            double iy = MathHelper.lerp(pt, en.yo, en.getY());
-            double iz = MathHelper.lerp(pt, en.zo, en.getZ());
-            AxisAlignedBB bb = en.getBoundingBox().move(ix - en.getX() - cam.x, iy - en.getY() - cam.y,
-                    iz - en.getZ() - cam.z);
-            WorldRenderer.renderLineBox(ms, vb, bb, c[0], c[1], c[2], 1.0f);
-        }
-        buf.endBatch(RenderType.lines());
-        } catch (Throwable t) {
-            Safe.fail("onWorldLast", t);
-        }
-    }
 }
